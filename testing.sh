@@ -43,11 +43,11 @@ Deck: $1
 Type: $2
 ---
 $(
-if test $2 == "cloze"; then
+if test $2 = "cloze"; then
   echo "{{c1::}}"
 fi
 )$(
-if test $2 == "basic"; then
+if test $2 = "basic"; then
 cat <<-BSC
 Front
 ---
