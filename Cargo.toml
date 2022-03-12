@@ -1,0 +1,14 @@
+[package]
+name = "cardify"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "*", features = ["derive"]}
+serde_yaml = "*"
+itertools = "*"
+rusqlite = "*"
+sha1 = "*"
+uuid = { version = "*", features = ["v4"]}
+anki = { path = "anki/rslib" }
+html-escape = "*"
