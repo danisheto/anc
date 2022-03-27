@@ -99,7 +99,6 @@ fn process_cards(decks: Vec<Deck>) {
                 WHERE SUBSTR(flds, 0, INSTR(flds, char(31))) like ?
                 limit 1
             ").unwrap();
-        let mut changed = connection.prepare("select total_changes()").unwrap();
         let mut check_time = connection.prepare("SELECT ifnull(max(id), 0) FROM notes").unwrap();
         let mut usn_statement = connection.prepare("select usn from col").unwrap();
         // TODO: try named parameters instead
@@ -152,11 +151,7 @@ fn process_cards(decks: Vec<Deck>) {
                 let uuid: &str = Uuid::new_v4().to_simple().encode_lower(&mut encode_buffer);
                 let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos() as i64;
 
-                let before: i8 = if let Some(row) = changed.query([]).unwrap().next().unwrap() {
-                    row.get(0).unwrap()
-                } else { 0 };
-
-                insert_note.execute(params![
+                let added_count = insert_note.execute(params![
                     next_note_id,
                     uuid,
                     basic_id,
@@ -165,12 +160,9 @@ fn process_cards(decks: Vec<Deck>) {
                     fieldstr.as_str(),
                     n.id.as_str(),
                 ]).unwrap();
-                let after: i8 = if let Some(row) = changed.query([]).unwrap().next().unwrap() {
-                    row.get(0).unwrap()
-                } else { 0 };
                 
                 // has to be either 0 or one
-                if after > before {
+                if added_count > 0 {
                     note_ids.push(NoteId::from(next_note_id));
                 }
 
@@ -184,11 +176,7 @@ fn process_cards(decks: Vec<Deck>) {
                     let fld = build_field_str(vec![n.id, n.front, n.back]);
                     let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos() as i64;
 
-                    let before: i8 = if let Some(row) = changed.query([]).unwrap().next().unwrap() {
-                        row.get(0).unwrap()
-                    } else { 0 };
-
-                    update_note.execute(params![
+                    let changed_count = update_note.execute(params![
                         time,
                         usn,
                         fld.as_str(),
@@ -196,13 +184,9 @@ fn process_cards(decks: Vec<Deck>) {
                         note_id,
                         fld.as_str(),
                     ]).unwrap();
-
-                    let after: i8 = if let Some(row) = changed.query([]).unwrap().next().unwrap() {
-                        row.get(0).unwrap()
-                    } else { 0 };
                     
                     // has to be either 0 or one
-                    if after > before {
+                    if changed_count > 0 {
                         note_ids.push(NoteId::from(note_id));
                     }
                 })
