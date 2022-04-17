@@ -1,47 +1,36 @@
 pub struct Deck {
     pub name: String,
-    pub basic: Vec<BasicCard>,
-    pub cloze: Vec<ClozeCard>,
+    pub groups: Vec<TypeGroup>,
 }
 
 impl Deck {
-    pub fn new(name: String, basic: Vec<BasicCard>, cloze: Vec<ClozeCard>) -> Deck {
+    pub fn new(name: String, groups: Vec<TypeGroup>) -> Deck {
         Deck {
             name,
-            basic,
-            cloze,
+            groups,
         }
     }
 }
 
+pub struct TypeGroup {
+    pub model: String,
+    pub cards: Vec<Card>,
+}
+
+// TODO: Instead of explicity mentioning type, reduce into hashmap by notetype
+// and apply each field the normal way
 #[derive(Debug)]
-pub struct BasicCard {
-    pub id: String,
-    pub front: String,
-    pub back: String,
+pub struct Card {
+    pub model: String,
+    pub fields: Vec<String>, // The first is assumed to be the id
 }
 
-impl BasicCard {
-    pub fn new(filename: String, front: String, back: String) -> BasicCard {
-        BasicCard {
-            id: filename, // TODO: remove .qz at the end
-            front,
-            back,
+impl Card {
+    pub fn new(model: String, fields: Vec<String>) -> Card {
+        Card {
+            model,
+            fields
         }
     }
 }
 
-#[derive(Debug)]
-pub struct ClozeCard {
-    id: String,
-    value: String,
-}
-
-impl ClozeCard {
-    pub fn new(filename: String, value: String) -> ClozeCard {
-        ClozeCard {
-            id: filename, // TODO: remove .qz at the end
-            value,
-        }
-    }
-}

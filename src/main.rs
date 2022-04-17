@@ -2,12 +2,10 @@ use std::{env, fs::{File, self}, io::{self, BufRead}, time::SystemTime};
 use anki::{collection::CollectionBuilder, notes::NoteId}; use html_escape::encode_text;
 use itertools::{Itertools, Either};
 
-use cards::Deck;
+use cards::{Deck, Card, TypeGroup};
 use rusqlite::params;
 use serde::Deserialize;
 use uuid::Uuid;
-
-use crate::cards::{BasicCard, ClozeCard};
 
 pub mod cards;
 
@@ -47,16 +45,23 @@ fn main() {
         .group_by(|(deck_name, _)| deck_name.to_string())
         .into_iter()
         .map(|(deck_name, group)| {
-            let (basic, cloze): (Vec<Card>, Vec<Card>) = group
+            let types: Vec<_> = group
                 .into_iter()
                 .map(|(_, card)| card)
-                .partition(|card| card.is_basic());
+                .group_by(|c| c.model.clone())
+                .into_iter()
+                .map(|(model, cards)| {
+                    TypeGroup {
+                        model: model.to_string(),
+                        cards: cards.into_iter().collect(),
+                    }
+                })
+                .collect();
 
-            Deck::new(
-                deck_name.to_string(),
-                basic.into_iter().map(|b| b.basic()).collect(),
-                cloze.into_iter().map(|c| c.cloze()).collect(),
-            )
+            Deck {
+                name: deck_name,
+                groups: types,
+            }
         })
         .collect();
 
@@ -115,9 +120,14 @@ fn process_cards(decks: Vec<Deck>) {
             // split into adds and updates
             // TODO: calculating the first field probably requires a full table scan
             // get around this by computing checksums to do a range scan first
-            let (to_add, to_update): (Vec<_>, Vec<_>) = d.basic.into_iter()
+            let (to_add, to_update): (Vec<_>, Vec<_>) = d
+                .groups.iter()
+                    .find(|&g| g.model == "basic")
+                    .unwrap()
+                    .cards
+                .iter()
                 .partition_map(|card| {
-                    if let Some(row) = nid_by_field.query(params![card.id]).unwrap().next().unwrap() {
+                    if let Some(row) = nid_by_field.query(params![card.fields.get(0).unwrap()]).unwrap().next().unwrap() {
                         let note_id: i64 = row.get(0).unwrap();
                         Either::Right((note_id, card))
                     } else {
@@ -146,7 +156,12 @@ fn process_cards(decks: Vec<Deck>) {
             let mut encode_buffer = Uuid::encode_buffer();
             for n in to_add {
                 // map to field string, nothing else is used
-                let fieldstr = format!("{}\u{1f}{}\u{1f}{}", n.id.as_str(), &n.front, &n.back);
+                let fieldstr = format!(
+                    "{}\u{1f}{}\u{1f}{}",
+                    n.fields.get(0).unwrap().as_str(),
+                    &n.fields.get(1).unwrap(),
+                    &n.fields.get(2).unwrap()
+                );
                 // let fieldstr = buildFieldStr(vec![n.id, n.front, n.back]);
                 let uuid: &str = Uuid::new_v4().to_simple().encode_lower(&mut encode_buffer);
                 let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos() as i64;
@@ -158,7 +173,7 @@ fn process_cards(decks: Vec<Deck>) {
                     time,
                     usn,
                     fieldstr.as_str(),
-                    n.id.as_str(),
+                    n.fields.get(0).unwrap().as_str(),
                 ]).unwrap();
                 
                 // has to be either 0 or one
@@ -172,8 +187,12 @@ fn process_cards(decks: Vec<Deck>) {
             // add updates
             to_update.into_iter()
                 .for_each(|(note_id, n)| {
-                    let first_field = n.id.clone();
-                    let fld = build_field_str(vec![n.id, n.front, n.back]);
+                    let first_field = n.fields.get(0).unwrap().clone();
+                    let fld = build_field_str(vec![
+                        n.fields.get(0).unwrap().clone(),
+                        n.fields.get(1).unwrap().clone(),
+                        n.fields.get(2).unwrap().clone()
+                    ]);
                     let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos() as i64;
 
                     let changed_count = update_note.execute(params![
@@ -209,41 +228,8 @@ pub struct Frontmatter {
     r#type: String,
 }
 
-// TODO: Instead of explicity mentioning type, reduce into hashmap by notetype
-// and apply each field the normal way
-#[derive(Debug)]
-pub enum Card {
-    Basic(BasicCard),
-    Cloze(ClozeCard),
-}
-
-impl Card {
-    pub fn is_basic(&self) -> bool {
-        match self {
-            Card::Basic(_) => true,
-            Card::Cloze(_) => false,
-        }
-    }
-    pub fn is_cloze(&self) -> bool {
-        match self {
-            Card::Basic(_) => false,
-            Card::Cloze(_) => true,
-        }
-    }
-    pub fn basic(self) -> BasicCard {
-        match self {
-            Card::Basic(b) => b,
-            Card::Cloze(_) => panic!("Not a Basic Card!"),
-        }
-    }
-    pub fn cloze(self) -> ClozeCard {
-        match self {
-            Card::Basic(_) => panic!("Not a Cloze Card!"),
-            Card::Cloze(c) => c,
-        }
-    }
-}
-
+// TODO: remove knowledge about types
+// pull from anki and check types
 fn parse_card(filename: &String) -> Result<(String, Card), &'static str> {
     let file = File::open(filename.clone()).unwrap();
     let mut reader = io::BufReader::new(file);
@@ -298,8 +284,9 @@ fn parse_card(filename: &String) -> Result<(String, Card), &'static str> {
         }
         return Ok((
             frontmatter.deck,
-            Card::Basic(
-                BasicCard::new(filename.to_string(), plaintext(front), plaintext(back))
+            Card::new(
+                String::from("basic"),
+                vec![filename.to_string(), plaintext(front), plaintext(back)]
             )
         ))
     } else if frontmatter.r#type == "cloze" {
@@ -311,8 +298,9 @@ fn parse_card(filename: &String) -> Result<(String, Card), &'static str> {
         }
         Ok((
             frontmatter.deck,
-            Card::Cloze(
-                ClozeCard::new(filename.to_string(), value)
+            Card::new(
+                String::from("cloze"),
+                vec![filename.to_string(), value]
             )
         ))
     } else {
@@ -324,6 +312,5 @@ fn parse_card(filename: &String) -> Result<(String, Card), &'static str> {
 fn plaintext(text: String) -> String {
     let stripped = text.trim();
     let encoded = encode_text(stripped);
-    let newlines = encoded.replace("\n", "<br/>");
-    newlines
+    encoded.replace("\n", "<br/>")
 }
