@@ -16,10 +16,15 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let dir = &args[1];
 
-    // TODO: filter out non-.qz files
     // TODO: accept list of files instead of a directory
     let paths: Vec<_> = fs::read_dir(dir).unwrap().into_iter()
-        .map(|p| p.unwrap().path().display().to_string())
+        .map(|p| p.unwrap().path())
+        .filter(|p| p.is_file() && 
+            Some("qz") == p.extension()
+                .map(|e| e.to_str())
+                .flatten()
+        )
+        .map(|p| p.display().to_string())
         .collect();
 
     let card_results: Vec<_> = paths.iter()

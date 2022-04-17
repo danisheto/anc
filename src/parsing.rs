@@ -13,7 +13,6 @@ pub fn parse_card(filename: &String) -> Result<(String, Card), String> {
     let reader = io::BufReader::new(file);
     let mut lines = reader.lines();
 
-    // TODO: write helper method for this
     if let Some(Ok(l)) = lines.next() {
         if l.trim() != "---" {
             return Err("missing frontmatter".to_string());
