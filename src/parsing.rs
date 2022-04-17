@@ -6,28 +6,28 @@ use crate::{cards::Card, Frontmatter};
 
 // TODO: remove knowledge about types
 // pull from anki and check types
+// TODO: allow for more than one question per file
 pub fn parse_card(filename: &String) -> Result<(String, Card), String> {
     let file = File::open(filename.clone())
         .map_err(|_| format!("Could not open {}", filename))?;
-    let mut reader = io::BufReader::new(file);
-    let mut buf = String::new();
+    let reader = io::BufReader::new(file);
+    let mut lines = reader.lines();
 
     // TODO: write helper method for this
-    if reader.read_line(&mut buf).is_ok() && buf.len() > 0 && buf.trim() != "---" {
-        return Err("missing frontmatter".to_string());
+    if let Some(Ok(l)) = lines.next() {
+        if l.trim() != "---" {
+            return Err("missing frontmatter".to_string());
+        }
     }
-    buf.clear();
 
     let mut yaml: String = "".to_string();
-    while reader.read_line(&mut buf).is_ok() && buf.len() > 0 {
-        if buf.trim() == "---" {
-            buf.clear();
+    while let Some(Ok(l)) = lines.next() {
+        if l.trim() == "---" {
             break;
         }
 
-        yaml += buf.as_str().clone();
-
-        buf.clear();
+        yaml += l.as_str();
+        yaml += "\n";
     }
 
     let frontmatter: Frontmatter = serde_yaml::from_str(&yaml)
@@ -35,26 +35,22 @@ pub fn parse_card(filename: &String) -> Result<(String, Card), String> {
 
     if frontmatter.r#type == "basic" {
         let mut front: String = "".to_string();
-        while reader.read_line(&mut buf).is_ok() && buf.len() > 0 {
-            if buf.trim() == "---" {
-                buf.clear();
+        while let Some(Ok(l)) = lines.next() {
+            if l.trim() == "---" {
                 break;
             }
 
-            front += buf.as_str().clone();
-
-            buf.clear();
+            front += l.as_str();
+            front += "\n";
         }
         let mut back: String = "".to_string();
-        while reader.read_line(&mut buf).is_ok() && buf.len() > 0 {
-            if buf.trim() == "---" {
-                buf.clear();
+        while let Some(Ok(l)) = lines.next() {
+            if l.trim() == "---" {
                 break;
             }
 
-            back += buf.as_str().clone();
-
-            buf.clear();
+            back += l.as_str();
+            back += "\n";
         }
         if back.as_str() == "" {
             return Err("The back of the card is missing".to_string());
@@ -68,10 +64,9 @@ pub fn parse_card(filename: &String) -> Result<(String, Card), String> {
         ))
     } else if frontmatter.r#type == "cloze" {
         let mut value: String = "".to_string();
-        while reader.read_line(&mut buf).is_ok() && buf.len() > 0 {
-            value += buf.as_str().clone();
-
-            buf.clear();
+        while let Some(Ok(l)) = lines.next() {
+            value += l.as_str();
+            value += "\n";
         }
         Ok((
             frontmatter.deck,
