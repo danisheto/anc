@@ -1,8 +1,15 @@
 use std::{io::{self, BufRead}, fs::File};
 
 use html_escape::encode_text;
+use serde::Deserialize;
 
-use crate::{cards::Card, Frontmatter};
+use crate::cards::Card;
+
+#[derive(Deserialize)]
+pub struct Frontmatter {
+    deck: String,
+    r#type: String,
+}
 
 // TODO: remove knowledge about types
 // pull from anki and check types

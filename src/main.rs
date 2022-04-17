@@ -5,7 +5,6 @@ use itertools::{Itertools, Either};
 use cards::{Deck, TypeGroup};
 use parsing::parse_card;
 use rusqlite::params;
-use serde::Deserialize;
 use uuid::Uuid;
 
 pub mod cards;
@@ -228,10 +227,3 @@ fn process_cards(decks: Vec<Deck>) {
 fn build_field_str(fields: Vec<String>) -> String {
     fields.join("\u{1f}")
 }
-
-#[derive(Deserialize)]
-pub struct Frontmatter {
-    deck: String,
-    r#type: String,
-}
-
