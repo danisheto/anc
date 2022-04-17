@@ -33,52 +33,36 @@ pub fn parse_card(filename: &String) -> Result<(String, Card), String> {
     let frontmatter: Frontmatter = serde_yaml::from_str(&yaml)
         .map_err(|e| format!("error parsing frontmatter: {}", e) )?;
 
-    if frontmatter.r#type == "basic" {
-        let mut front: String = "".to_string();
+    let fields = {
+        let mut parts = vec!("".to_string());
+        let mut index = 0;
+        let mut last = parts.get_mut(0).unwrap();
         while let Some(Ok(l)) = lines.next() {
             if l.trim() == "---" {
-                break;
+                parts.push("".to_string());
+                index += 1;
+                last = parts.get_mut(index).unwrap();
+                continue;
             }
+            *last += l.as_str();
+            *last += "\n";
+        }
 
-            front += l.as_str();
-            front += "\n";
-        }
-        let mut back: String = "".to_string();
-        while let Some(Ok(l)) = lines.next() {
-            if l.trim() == "---" {
-                break;
-            }
+        parts = parts.into_iter()
+            .map(|p| plaintext(p))
+            .collect();
 
-            back += l.as_str();
-            back += "\n";
-        }
-        if back.as_str() == "" {
-            return Err("The back of the card is missing".to_string());
-        }
-        return Ok((
-            frontmatter.deck,
-            Card::new(
-                String::from("basic"),
-                vec![filename.to_string(), plaintext(front), plaintext(back)]
-            )
-        ))
-    } else if frontmatter.r#type == "cloze" {
-        let mut value: String = "".to_string();
-        while let Some(Ok(l)) = lines.next() {
-            value += l.as_str();
-            value += "\n";
-        }
-        Ok((
-            frontmatter.deck,
-            Card::new(
-                String::from("cloze"),
-                vec![filename.to_string(), value]
-            )
-        ))
-    } else {
-        // run hooks
-        Err("Only cloze and basic cards are allowed".to_string())
-    }
+        parts.insert(0, filename.to_string());
+        parts
+    };
+
+    return Ok((
+        frontmatter.deck,
+        Card::new(
+            frontmatter.r#type,
+            fields,
+        )
+    ))
 }
 
 fn plaintext(text: String) -> String {
