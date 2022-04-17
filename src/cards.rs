@@ -19,7 +19,7 @@ pub struct TypeGroup {
 
 // TODO: Instead of explicity mentioning type, reduce into hashmap by notetype
 // and apply each field the normal way
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Card {
     pub model: String,
     pub fields: Vec<String>, // The first is assumed to be the id

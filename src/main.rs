@@ -1,13 +1,15 @@
-use std::{env, fs::{File, self}, io::{self, BufRead}, time::SystemTime};
-use anki::{collection::CollectionBuilder, notes::NoteId}; use html_escape::encode_text;
+use std::{env, time::SystemTime, fs};
+use anki::{collection::CollectionBuilder, notes::NoteId};
 use itertools::{Itertools, Either};
 
-use cards::{Deck, Card, TypeGroup};
+use cards::{Deck, TypeGroup};
+use parsing::parse_card;
 use rusqlite::params;
 use serde::Deserialize;
 use uuid::Uuid;
 
 pub mod cards;
+pub mod parsing;
 
 fn main() {
     // read/parse from files
@@ -228,89 +230,3 @@ pub struct Frontmatter {
     r#type: String,
 }
 
-// TODO: remove knowledge about types
-// pull from anki and check types
-fn parse_card(filename: &String) -> Result<(String, Card), &'static str> {
-    let file = File::open(filename.clone()).unwrap();
-    let mut reader = io::BufReader::new(file);
-    let mut buf = String::new();
-
-    // TODO: write helper method for this
-    if reader.read_line(&mut buf).is_ok() && buf.len() > 0 && buf.trim() != "---" {
-        return Err("missing frontmatter");
-    }
-    buf.clear();
-
-    let mut yaml: String = "".to_string();
-    while reader.read_line(&mut buf).is_ok() && buf.len() > 0 {
-        if buf.trim() == "---" {
-            buf.clear();
-            break;
-        }
-
-        yaml += buf.as_str().clone();
-
-        buf.clear();
-    }
-
-    let frontmatter: Frontmatter = serde_yaml::from_str(&yaml)
-        .map_err(|_| "error parsing frontmatter, only valid yaml is accepted")?;
-
-    if frontmatter.r#type == "basic" {
-        let mut front: String = "".to_string();
-        while reader.read_line(&mut buf).is_ok() && buf.len() > 0 {
-            if buf.trim() == "---" {
-                buf.clear();
-                break;
-            }
-
-            front += buf.as_str().clone();
-
-            buf.clear();
-        }
-        let mut back: String = "".to_string();
-        while reader.read_line(&mut buf).is_ok() && buf.len() > 0 {
-            if buf.trim() == "---" {
-                buf.clear();
-                break;
-            }
-
-            back += buf.as_str().clone();
-
-            buf.clear();
-        }
-        if back.as_str() == "" {
-            return Err("The back of the card is missing");
-        }
-        return Ok((
-            frontmatter.deck,
-            Card::new(
-                String::from("basic"),
-                vec![filename.to_string(), plaintext(front), plaintext(back)]
-            )
-        ))
-    } else if frontmatter.r#type == "cloze" {
-        let mut value: String = "".to_string();
-        while reader.read_line(&mut buf).is_ok() && buf.len() > 0 {
-            value += buf.as_str().clone();
-
-            buf.clear();
-        }
-        Ok((
-            frontmatter.deck,
-            Card::new(
-                String::from("cloze"),
-                vec![filename.to_string(), value]
-            )
-        ))
-    } else {
-        // run hooks
-        Err("Only cloze and basic cards are allowed")
-    }
-}
-
-fn plaintext(text: String) -> String {
-    let stripped = text.trim();
-    let encoded = encode_text(stripped);
-    encoded.replace("\n", "<br/>")
-}
