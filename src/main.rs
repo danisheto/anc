@@ -165,13 +165,7 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
             let mut encode_buffer = Uuid::encode_buffer();
             for n in to_add {
                 // map to field string, nothing else is used
-                let fieldstr = format!(
-                    "{}\u{1f}{}\u{1f}{}",
-                    n.fields.get(0).unwrap().as_str(),
-                    &n.fields.get(1).unwrap(),
-                    &n.fields.get(2).unwrap()
-                );
-                // let fieldstr = buildFieldStr(vec![n.id, n.front, n.back]);
+                let fieldstr = build_field_str(&n.fields);
                 let uuid: &str = Uuid::new_v4().to_simple().encode_lower(&mut encode_buffer);
                 let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos() as i64;
 
@@ -197,20 +191,16 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
             to_update.into_iter()
                 .for_each(|(note_id, n)| {
                     let first_field = n.fields.get(0).unwrap().clone();
-                    let fld = build_field_str(vec![
-                        n.fields.get(0).unwrap().clone(),
-                        n.fields.get(1).unwrap().clone(),
-                        n.fields.get(2).unwrap().clone()
-                    ]);
+                    let fieldstr = build_field_str(&n.fields);
                     let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos() as i64;
 
                     let changed_count = update_note.execute(params![
                         time,
                         usn,
-                        fld.as_str(),
+                        fieldstr,
                         first_field.as_str(),
                         note_id,
-                        fld.as_str(),
+                        fieldstr,
                     ]).unwrap();
                     
                     // has to be either 0 or one
@@ -225,6 +215,6 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
     collection.after_note_updates(&*note_ids, true, false).unwrap();
 }
 
-fn build_field_str(fields: Vec<String>) -> String {
+fn build_field_str(fields: &Vec<String>) -> String {
     fields.join("\u{1f}")
 }
