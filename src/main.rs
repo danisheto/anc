@@ -72,17 +72,20 @@ fn main() {
         .collect();
 
     // add/update from collection
-    process_cards(cards);
+    let path = env::var("TEST_ANKI").expect("For testing, need a $TEST_ANKI");
+    process_cards(&path, cards);
+
+    // TODO: log
 }
 
 // TODO:
 // - Check for duplicates
 // - tags
-fn process_cards(decks: Vec<Deck>) {
-    let path = "/home/ethans/.local/share/Anki2/Test/collection.anki2";
+fn process_cards(path: &str, decks: Vec<Deck>) {
     let mut note_ids: Vec<NoteId> = vec![];
     {
-        let connection = rusqlite::Connection::open(path).unwrap();
+        let connection = rusqlite::Connection::open(path)
+            .expect("Test collection does not exist");
         // get fields of each notetype - this will only be used in processFields
         // for simplicity, make new request per 
         let mut type_id = connection.prepare(
@@ -220,8 +223,6 @@ fn process_cards(decks: Vec<Deck>) {
     // create cards
     let mut collection = CollectionBuilder::new(path).build().unwrap();
     collection.after_note_updates(&*note_ids, true, false).unwrap();
-
-    // TODO: log
 }
 
 fn build_field_str(fields: Vec<String>) -> String {
