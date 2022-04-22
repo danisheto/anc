@@ -79,7 +79,7 @@ fn plaintext(text: String) -> String {
 
 #[test]
 fn basic() {
-    let result = parse_card(&"test_files/basic.qz".to_string());
+    let result = parse_card(&"test_files/good/basic.qz".to_string());
 
     assert!(result.is_ok(), "{}", result.unwrap_err());
 
@@ -89,7 +89,7 @@ fn basic() {
         card,
         Card {
             model: "basic".to_string(),
-            fields: vec!["test_files/basic.qz".to_string(), "Question".to_string(), "Answer".to_string()]
+            fields: vec!["test_files/good/basic.qz".to_string(), "Question".to_string(), "Answer".to_string()]
         }
     )
 }
