@@ -17,8 +17,6 @@ pub struct TypeGroup {
     pub cards: Vec<Card>,
 }
 
-// TODO: Instead of explicity mentioning type, reduce into hashmap by notetype
-// and apply each field the normal way
 #[derive(Debug, PartialEq)]
 pub struct Card {
     pub model: String,

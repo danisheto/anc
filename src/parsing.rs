@@ -11,8 +11,6 @@ pub struct Frontmatter {
     r#type: String,
 }
 
-// TODO: remove knowledge about types
-// pull from anki and check types
 // TODO: allow for more than one question per file
 pub fn parse_card(filename: &String) -> Result<(String, Card), String> {
     let file = File::open(filename.clone())

@@ -1,4 +1,4 @@
-use std::{env, time::SystemTime, fs};
+use std::{env, time::SystemTime, fs, collections::HashMap};
 use anki::{collection::CollectionBuilder, notes::NoteId};
 use itertools::{Itertools, Either};
 
@@ -86,27 +86,17 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
     {
         let connection = rusqlite::Connection::open(path)
             .expect("Test collection does not exist");
-        // get fields of each notetype - this will only be used in processFields
-        // for simplicity, make new request per 
-        let mut type_id = connection.prepare(
+
+        let mut type_ids = HashMap::new();
+        let mut type_id_query = connection.prepare(
             "
                 SELECT id
                 FROM notetypes
                 WHERE name like ?
                 order by name collate nocase
             ").unwrap();
-        let basic_id: i64 = if let Some(row) = type_id.query(params!["basic"]).unwrap().next().unwrap() {
-            row.get(0).unwrap()
-        } else {
-            panic!("Can't find card model");
-        };
-        // let _cloze_id = if let State::Row = statement.next().unwrap() {
-        //     statement.read::<i64>(0).unwrap()
-        // } else {
-        //     panic!("Can't find card model");
-        // };
 
-        let mut nid_by_field = connection.prepare(
+        let mut nid_by_first_field = connection.prepare(
             "
                 SELECT id
                 FROM notes
@@ -125,89 +115,100 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
         // TODO: better error handling
         // only import if all work
         for d in decks {
-            // compute
-            // split into adds and updates
-            // TODO: calculating the first field probably requires a full table scan
-            // get around this by computing checksums to do a range scan first
-            let (to_add, to_update): (Vec<_>, Vec<_>) = d
-                .groups.iter()
-                    .find(|&g| g.model == "basic")
-                    .unwrap()
-                    .cards
-                .iter()
-                .partition_map(|card| {
-                    if let Some(row) = nid_by_field.query(params![card.fields.get(0).unwrap()]).unwrap().next().unwrap() {
-                        let note_id: i64 = row.get(0).unwrap();
-                        Either::Right((note_id, card))
+            for g in d.groups {
+                let type_id = if let Some(id) = type_ids.get(&g.model) {
+                    *id
+                } else {
+                    let id = type_id_query.query(params![g.model]).unwrap()
+                        .next()
+                        .unwrap()
+                        .expect("Can't find card model")
+                        .get::<usize, i64>(0) // TODO: handle if there's multiple
+                                // request user to pick the correct one and rename accordingly
+                        .expect("Can't find card model");
+                    type_ids.insert(g.model, id);
+                    id
+                };
+                // compute
+                // split into adds and updates
+                // TODO: calculating the first field probably requires a full table scan
+                // get around this by computing checksums to do a range scan first
+                let (to_add, to_update): (Vec<_>, Vec<_>) = g.cards
+                    .iter()
+                    .partition_map(|card| {
+                        if let Ok(Some(row)) = nid_by_first_field.query(params![card.fields.get(0).unwrap()]).unwrap().next() {
+                            let note_id: i64 = row.get(0).unwrap();
+                            Either::Right((note_id, card))
+                        } else {
+                            Either::Left(card)
+                        }
+                    });
+                // note id
+                let current = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as i64;
+                let mut next_note_id = if let Some(row) = check_time.query([]).unwrap().next().unwrap() {
+                    let max: i64 = row.get(0).unwrap();
+                    if max > current {
+                        max + 1
                     } else {
-                        Either::Left(card)
+                        current
                     }
-                });
-            // note id
-            let current = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() as i64;
-            let mut next_note_id = if let Some(row) = check_time.query([]).unwrap().next().unwrap() {
-                let max: i64 = row.get(0).unwrap();
-                if max > current {
-                    max + 1
                 } else {
                     current
-                }
-            } else {
-                current
-            };
-            // grab usn - no idea what this is
-            let usn: i64 = if let Some(row) = usn_statement.query([]).unwrap().next().unwrap() {
-                row.get(0).unwrap()
-            } else {
-                panic!("col table missing");
-            };
-            // add new
-            let mut encode_buffer = Uuid::encode_buffer();
-            for n in to_add {
-                // map to field string, nothing else is used
-                let fieldstr = build_field_str(&n.fields);
-                let uuid: &str = Uuid::new_v4().to_simple().encode_lower(&mut encode_buffer);
-                let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos() as i64;
-
-                let added_count = insert_note.execute(params![
-                    next_note_id,
-                    uuid,
-                    basic_id,
-                    time,
-                    usn,
-                    fieldstr.as_str(),
-                    n.fields.get(0).unwrap().as_str(),
-                ]).unwrap();
-                
-                // has to be either 0 or one
-                if added_count > 0 {
-                    note_ids.push(NoteId::from(next_note_id));
-                }
-
-                next_note_id += 1;
-            }
-
-            // add updates
-            to_update.into_iter()
-                .for_each(|(note_id, n)| {
-                    let first_field = n.fields.get(0).unwrap().clone();
+                };
+                // grab usn - no idea what this is
+                let usn: i64 = if let Some(row) = usn_statement.query([]).unwrap().next().unwrap() {
+                    row.get(0).unwrap()
+                } else {
+                    panic!("col table missing");
+                };
+                // add new
+                let mut encode_buffer = Uuid::encode_buffer();
+                for n in to_add {
+                    // map to field string, nothing else is used
                     let fieldstr = build_field_str(&n.fields);
+                    let uuid: &str = Uuid::new_v4().to_simple().encode_lower(&mut encode_buffer);
                     let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos() as i64;
 
-                    let changed_count = update_note.execute(params![
+                    let added_count = insert_note.execute(params![
+                        next_note_id,
+                        uuid,
+                        type_id,
                         time,
                         usn,
-                        fieldstr,
-                        first_field.as_str(),
-                        note_id,
-                        fieldstr,
+                        fieldstr.as_str(),
+                        n.fields.get(0).unwrap().as_str(),
                     ]).unwrap();
                     
                     // has to be either 0 or one
-                    if changed_count > 0 {
-                        note_ids.push(NoteId::from(note_id));
+                    if added_count > 0 {
+                        note_ids.push(NoteId::from(next_note_id));
                     }
-                })
+
+                    next_note_id += 1;
+                }
+
+                // add updates
+                to_update.into_iter()
+                    .for_each(|(note_id, n)| {
+                        let first_field = n.fields.get(0).unwrap().clone();
+                        let fieldstr = build_field_str(&n.fields);
+                        let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos() as i64;
+
+                        let changed_count = update_note.execute(params![
+                            time,
+                            usn,
+                            fieldstr,
+                            first_field.as_str(),
+                            note_id,
+                            fieldstr,
+                        ]).unwrap();
+                        
+                        // has to be either 0 or one
+                        if changed_count > 0 {
+                            note_ids.push(NoteId::from(note_id));
+                        }
+                    })
+                }
         }
     }
     // create cards
