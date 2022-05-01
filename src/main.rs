@@ -17,7 +17,7 @@ fn main() {
 
     // TODO: accept list of files instead of a directory
     let paths: Vec<_> = fs::read_dir(dir).unwrap().into_iter()
-        .map(|p| p.unwrap().path())
+        .map(|p| p.unwrap().path().canonicalize().unwrap())
         .filter(|p| p.is_file() && 
             Some("qz") == p.extension()
                 .map(|e| e.to_str())
