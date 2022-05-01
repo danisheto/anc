@@ -40,10 +40,9 @@ fn main() {
 
     if errors.len() > 0 {
         for (r, p) in errors {
-            // TODO: exit code 1
-            println!("{}: {}", p, r);
+            eprintln!("{}: {}", p, r);
         }
-        return;
+        std::process::exit(65);
     }
 
     let cards: Vec<_> = card_res.into_iter()
