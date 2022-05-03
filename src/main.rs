@@ -82,39 +82,39 @@ fn main() {
 // - tags
 fn process_cards(path: &str, decks: Vec<Deck>) {
     let mut note_ids: Vec<NoteId> = vec![];
-    {
-        let connection = rusqlite::Connection::open(path)
-            .expect("Test collection does not exist");
-
-        let mut type_ids = HashMap::new();
-        let mut type_id_query = connection.prepare(
-            "
-                SELECT id
-                FROM notetypes
-                WHERE name like ?
-                order by name collate nocase
-            ").unwrap();
-
-        let mut nid_by_first_field = connection.prepare(
-            "
-                SELECT id
-                FROM notes
-                WHERE SUBSTR(flds, 0, INSTR(flds, char(31))) like ?
-                limit 1
-            ").unwrap();
-        let mut check_time = connection.prepare("SELECT ifnull(max(id), 0) FROM notes").unwrap();
-        let mut usn_statement = connection.prepare("select usn from col").unwrap();
-        // TODO: try named parameters instead
-        let mut insert_note = connection.prepare("insert or replace into notes values (?, ?, ?, ?, ?, '', ?, ?, 0, 0, '')").unwrap();
-        let mut update_note = connection.prepare(
-            "update notes set mod = ?, usn = ?, flds = ?, sfld = ?
-             where id = ? and flds != ?"
-        ).unwrap();
-
+    for d in decks {
         // TODO: better error handling
         // only import if all work
-        for d in decks {
-            for g in d.groups {
+        for g in d.groups {
+            {
+                let connection = rusqlite::Connection::open(path)
+                    .expect("Test collection does not exist");
+
+                let mut type_ids = HashMap::new();
+                let mut type_id_query = connection.prepare(
+                    "
+                        SELECT id
+                        FROM notetypes
+                        WHERE name like ?
+                        order by name collate nocase
+                    ").unwrap();
+
+                let mut nid_by_first_field = connection.prepare(
+                    "
+                        SELECT id
+                        FROM notes
+                        WHERE SUBSTR(flds, 0, INSTR(flds, char(31))) like ?
+                        limit 1
+                    ").unwrap();
+                let mut check_time = connection.prepare("SELECT ifnull(max(id), 0) FROM notes").unwrap();
+                let mut usn_statement = connection.prepare("select usn from col").unwrap();
+                // TODO: try named parameters instead
+                let mut insert_note = connection.prepare("insert or replace into notes values (?, ?, ?, ?, ?, '', ?, ?, 0, 0, '')").unwrap();
+                let mut update_note = connection.prepare(
+                    "update notes set mod = ?, usn = ?, flds = ?, sfld = ?
+                     where id = ? and flds != ?"
+                ).unwrap();
+
                 let type_id = if let Some(id) = type_ids.get(&g.model) {
                     *id
                 } else {
@@ -206,8 +206,8 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
                         if changed_count > 0 {
                             note_ids.push(NoteId::from(note_id));
                         }
-                    })
-                }
+                    });
+            }
         }
     }
     // create cards
