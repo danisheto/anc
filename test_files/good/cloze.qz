@@ -1,0 +1,6 @@
+---
+deck: example
+type: cloze
+---
+Cloze {{c1::question}} w/ {{c2::multiple}} {{c3::parts}}
+---
