@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 serde = { version = "*", features = ["derive"]}
 serde_yaml = "*"
+serde_json = "*"
 itertools = "*"
 rusqlite = "*"
 sha1 = "*"

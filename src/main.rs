@@ -1,5 +1,5 @@
 use std::{env, time::SystemTime, fs, collections::HashMap};
-use anki::{collection::CollectionBuilder, notes::NoteId};
+use anki::{collection::CollectionBuilder, notes::NoteId, timestamp::TimestampSecs};
 use itertools::{Itertools, Either};
 
 use cards::{Deck, TypeGroup};
@@ -91,6 +91,7 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
                     .expect("Test collection does not exist");
 
                 let mut type_ids = HashMap::new();
+                // TODO: check number of required fields and fill fields with empty string
                 let mut type_id_query = connection.prepare(
                     "
                         SELECT id
@@ -114,6 +115,8 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
                     "update notes set mod = ?, usn = ?, flds = ?, sfld = ?
                      where id = ? and flds != ?"
                 ).unwrap();
+                let mut get_deck = connection.prepare("select id from decks where name like ?").unwrap();
+                let mut set_config = connection.prepare("insert or replace into config (key, usn, mtime_secs, val) values (?, ?, ?, ?)").unwrap();
 
                 let type_id = if let Some(id) = type_ids.get(&g.model) {
                     *id
@@ -207,14 +210,29 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
                             note_ids.push(NoteId::from(note_id));
                         }
                     });
+                // these config values are used by after_note_updates
+                let deck_id: i64 = get_deck.query(params![d.name]).unwrap().next()
+                    .expect(&format!("Deck {} does not exist", d.name))
+                    .expect(&format!("Deck {} does not exist", d.name))
+                    .get(0).unwrap();
+                set_config.execute(params![
+                    format!("_nt_{0}_lastDeck", type_id),
+                    usn,
+                    TimestampSecs::now(),
+                    serde_json::to_vec(&deck_id).unwrap(),
+                ]).unwrap();
             }
+            // TODO: fork anki to allow using the same sqlite connection
+            // want to be able to roll back errors
+            let mut collection = CollectionBuilder::new(path).build().unwrap();
+            // create cards
+            collection.after_note_updates(&*note_ids, true, false).unwrap();
         }
     }
-    // create cards
-    let mut collection = CollectionBuilder::new(path).build().unwrap();
-    collection.after_note_updates(&*note_ids, true, false).unwrap();
 }
 
 fn build_field_str(fields: &Vec<String>) -> String {
     fields.join("\u{1f}")
 }
+
+// TODO: end-to-end tests
