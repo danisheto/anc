@@ -13,3 +13,4 @@ sha1 = "*"
 uuid = { version = "*", features = ["v4"]}
 anki = { path = "anki/rslib" }
 html-escape = "*"
+prost = "*"

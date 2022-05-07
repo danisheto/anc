@@ -241,6 +241,7 @@ dependencies = [
  "anki",
  "html-escape",
  "itertools",
+ "prost",
  "rusqlite",
  "serde",
  "serde_json",

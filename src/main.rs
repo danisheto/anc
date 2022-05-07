@@ -1,11 +1,12 @@
 use std::{env, time::SystemTime, fs, collections::HashMap};
-use anki::{collection::CollectionBuilder, notes::NoteId, timestamp::TimestampSecs};
+use anki::{collection::CollectionBuilder, notes::NoteId, timestamp::TimestampSecs, decks::{DeckKindContainer, DeckKind, DeckId}, prelude::DeckConfigId, deckconfig::NewCardInsertOrder};
 use itertools::{Itertools, Either};
 
 use cards::{Deck, TypeGroup};
 use parsing::parse_card;
 use rusqlite::params;
 use uuid::Uuid;
+use prost::Message;
 
 pub mod cards;
 pub mod parsing;
@@ -86,6 +87,8 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
         // TODO: better error handling
         // only import if all work
         for g in d.groups {
+            let deck_id: i64;
+            let config_id: i64;
             {
                 let connection = rusqlite::Connection::open(path)
                     .expect("Test collection does not exist");
@@ -116,6 +119,7 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
                      where id = ? and flds != ?"
                 ).unwrap();
                 let mut get_deck = connection.prepare("select id from decks where name like ?").unwrap();
+                let mut get_deck_kind = connection.prepare("select kind from decks where id = ?").unwrap();
                 let mut set_config = connection.prepare("insert or replace into config (key, usn, mtime_secs, val) values (?, ?, ?, ?)").unwrap();
 
                 let type_id = if let Some(id) = type_ids.get(&g.model) {
@@ -211,7 +215,7 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
                         }
                     });
                 // these config values are used by after_note_updates
-                let deck_id: i64 = get_deck.query(params![d.name]).unwrap().next()
+                deck_id = get_deck.query(params![d.name]).unwrap().next()
                     .expect(&format!("Deck {} does not exist", d.name))
                     .expect(&format!("Deck {} does not exist", d.name))
                     .get(0).unwrap();
@@ -221,12 +225,27 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
                     TimestampSecs::now(),
                     serde_json::to_vec(&deck_id).unwrap(),
                 ]).unwrap();
+                let kind_blob: Vec<u8> = get_deck_kind.query(params![deck_id]).unwrap().next()
+                    .unwrap()
+                    .unwrap()
+                    .get(0)
+                    .unwrap();
+                let kind = DeckKindContainer::decode(kind_blob.as_slice()).unwrap();
+                config_id = if let Some(DeckKind::Normal(ref normal)) = kind.kind {
+                    Some(normal.config_id)
+                } else {
+                    None
+                }.unwrap();
             }
             // TODO: fork anki to allow using the same sqlite connection
             // want to be able to roll back errors
             let mut collection = CollectionBuilder::new(path).build().unwrap();
             // create cards
             collection.after_note_updates(&*note_ids, true, false).unwrap();
+            let config = collection.get_deck_config(DeckConfigId::from(config_id), true).unwrap().unwrap();
+            if config.inner.new_card_insert_order == NewCardInsertOrder::Random as i32 {
+                collection.sort_deck_legacy(DeckId::from(deck_id), true).unwrap();
+            }
         }
     }
 }
