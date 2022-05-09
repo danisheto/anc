@@ -84,9 +84,10 @@ fn main() {
 fn process_cards(path: &str, decks: Vec<Deck>) {
     let mut note_ids: Vec<NoteId> = vec![];
     let mut collection = CollectionBuilder::new(path).build().unwrap();
+    {
+        collection.storage.db.prepare("savepoint anc").unwrap().execute([]).unwrap();
+    }
     for d in decks {
-        // TODO: better error handling
-        // only import if all work
         for g in d.groups {
             let deck_id: i64;
             let config_id: i64;
@@ -242,6 +243,9 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
                 collection.sort_deck_legacy(DeckId::from(deck_id), true).unwrap();
             }
         }
+    }
+    {
+        collection.storage.db.prepare("release anc").unwrap().execute([]).unwrap(); // commit
     }
 }
 
