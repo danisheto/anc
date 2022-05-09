@@ -83,6 +83,7 @@ fn main() {
 // - tags
 fn process_cards(path: &str, decks: Vec<Deck>) {
     let mut note_ids: Vec<NoteId> = vec![];
+    let mut collection = CollectionBuilder::new(path).build().unwrap();
     for d in decks {
         // TODO: better error handling
         // only import if all work
@@ -90,12 +91,9 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
             let deck_id: i64;
             let config_id: i64;
             {
-                let connection = rusqlite::Connection::open(path)
-                    .expect("Test collection does not exist");
-
                 let mut type_ids = HashMap::new();
                 // TODO: check number of required fields and fill fields with empty string
-                let mut type_id_query = connection.prepare(
+                let mut type_id_query = collection.storage.db.prepare(
                     "
                         SELECT id
                         FROM notetypes
@@ -103,24 +101,24 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
                         order by name collate nocase
                     ").unwrap();
 
-                let mut nid_by_first_field = connection.prepare(
+                let mut nid_by_first_field = collection.storage.db.prepare(
                     "
                         SELECT id
                         FROM notes
                         WHERE SUBSTR(flds, 0, INSTR(flds, char(31))) like ?
                         limit 1
                     ").unwrap();
-                let mut check_time = connection.prepare("SELECT ifnull(max(id), 0) FROM notes").unwrap();
-                let mut usn_statement = connection.prepare("select usn from col").unwrap();
+                let mut check_time = collection.storage.db.prepare("SELECT ifnull(max(id), 0) FROM notes").unwrap();
+                let mut usn_statement = collection.storage.db.prepare("select usn from col").unwrap();
                 // TODO: try named parameters instead
-                let mut insert_note = connection.prepare("insert or replace into notes values (?, ?, ?, ?, ?, '', ?, ?, 0, 0, '')").unwrap();
-                let mut update_note = connection.prepare(
+                let mut insert_note = collection.storage.db.prepare("insert or replace into notes values (?, ?, ?, ?, ?, '', ?, ?, 0, 0, '')").unwrap();
+                let mut update_note = collection.storage.db.prepare(
                     "update notes set mod = ?, usn = ?, flds = ?, sfld = ?
                      where id = ? and flds != ?"
                 ).unwrap();
-                let mut get_deck = connection.prepare("select id from decks where name like ?").unwrap();
-                let mut get_deck_kind = connection.prepare("select kind from decks where id = ?").unwrap();
-                let mut set_config = connection.prepare("insert or replace into config (key, usn, mtime_secs, val) values (?, ?, ?, ?)").unwrap();
+                let mut get_deck = collection.storage.db.prepare("select id from decks where name like ?").unwrap();
+                let mut get_deck_kind = collection.storage.db.prepare("select kind from decks where id = ?").unwrap();
+                let mut set_config = collection.storage.db.prepare("insert or replace into config (key, usn, mtime_secs, val) values (?, ?, ?, ?)").unwrap();
 
                 let type_id = if let Some(id) = type_ids.get(&g.model) {
                     *id
@@ -237,9 +235,6 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
                     None
                 }.unwrap();
             }
-            // TODO: fork anki to allow using the same sqlite connection
-            // want to be able to roll back errors
-            let mut collection = CollectionBuilder::new(path).build().unwrap();
             // create cards
             collection.after_note_updates(&*note_ids, true, false).unwrap();
             let config = collection.get_deck_config(DeckConfigId::from(config_id), true).unwrap().unwrap();
