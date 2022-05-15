@@ -92,3 +92,23 @@ fn basic() {
 
     assert_eq!(count_query.query(params!["example"]).unwrap().next().unwrap().unwrap().get::<usize, i32>(0).unwrap(), 4);
 }
+
+#[macro_rules_attribute(import_test)]
+fn one_bad() {
+    let result = panic::catch_unwind(|| {
+        run("test_files/one_bad", "one_bad.anki2".to_string());
+    });
+    assert!(result.is_err());
+
+    let collection = CollectionBuilder::new("one_bad.anki2").build().unwrap();
+    let conn = collection.storage.db;
+    let mut count_query = conn.prepare("
+        select count()
+        from cards c
+        join decks d
+        on c.did = d.id
+        where d.name like ?
+    ").unwrap();
+
+    assert_eq!(count_query.query(params!["example"]).unwrap().next().unwrap().unwrap().get::<usize, i32>(0).unwrap(), 0);
+}
