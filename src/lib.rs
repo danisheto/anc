@@ -90,12 +90,12 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
             {
                 let mut type_ids = HashMap::new();
                 // TODO: check number of required fields and fill fields with empty string
-                let mut type_id_query = collection.storage.db.prepare(
+                let mut type_query = collection.storage.db.prepare(
                     "
-                        SELECT id
-                        FROM notetypes
-                        WHERE name like ?
-                        order by name collate nocase
+                        SELECT nt.id, count(*)
+                        FROM notetypes nt
+                        join fields fd on fd.ntid = nt.id
+                        WHERE nt.name like ?
                     ").unwrap();
 
                 let mut nid_by_first_field = collection.storage.db.prepare(
@@ -117,23 +117,23 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
                 let mut get_deck_kind = collection.storage.db.prepare("select kind from decks where id = ?").unwrap();
                 let mut set_config = collection.storage.db.prepare("insert or replace into config (key, usn, mtime_secs, val) values (?, ?, ?, ?)").unwrap();
 
-                let type_id = if let Some(id) = type_ids.get(&g.model) {
-                    *id
+                let (type_id, field_count) = if let Some(&(id, amount)) = type_ids.get(&g.model) {
+                    (id, amount)
                 } else {
-                    let id = type_id_query.query(params![g.model]).unwrap()
+                    let (id, amount) = type_query.query(params![g.model])
+                        .unwrap()
+                        .mapped(|row| Ok((
+                            row.get::<usize, i64>(0).expect("Can't find card model"),
+                            row.get::<usize, usize>(1).unwrap(),
+                        )))
                         .next()
                         .unwrap()
-                        .expect("Can't find card model")
-                        .get::<usize, i64>(0) // TODO: handle if there's multiple
-                                // request user to pick the correct one and rename accordingly
                         .expect("Can't find card model");
-                    type_ids.insert(g.model, id);
-                    id
+                    type_ids.insert(g.model, (id, amount));
+                    (id, amount)
                 };
-                // compute
+
                 // split into adds and updates
-                // TODO: calculating the first field probably requires a full table scan
-                // get around this by computing checksums to do a range scan first
                 let (to_add, to_update): (Vec<_>, Vec<_>) = g.cards
                     .iter()
                     .partition_map(|card| {
@@ -166,7 +166,7 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
                 let mut encode_buffer = Uuid::encode_buffer();
                 for n in to_add {
                     // map to field string, nothing else is used
-                    let fieldstr = build_field_str(&n.fields);
+                    let fieldstr = build_field_str(&n.fields, field_count - n.fields.len());
                     let uuid: &str = Uuid::new_v4().to_simple().encode_lower(&mut encode_buffer);
                     let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos() as i64;
 
@@ -192,7 +192,7 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
                 to_update.into_iter()
                     .for_each(|(note_id, n)| {
                         let first_field = n.fields.get(0).unwrap().clone();
-                        let fieldstr = build_field_str(&n.fields);
+                        let fieldstr = build_field_str(&n.fields, field_count - n.fields.len());
                         let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos() as i64;
 
                         let changed_count = update_note.execute(params![
@@ -245,6 +245,6 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
     }
 }
 
-fn build_field_str(fields: &Vec<String>) -> String {
-    fields.join("\u{1f}")
+fn build_field_str(fields: &Vec<String>, padding: usize) -> String {
+    fields.join("\u{1f}") + &"\u{1f}".repeat(padding)
 }
