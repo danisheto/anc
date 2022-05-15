@@ -14,3 +14,6 @@ uuid = { version = "*", features = ["v4"]}
 anki = { path = "anki/rslib" }
 html-escape = "*"
 prost = "*"
+
+[dev-dependencies]
+macro_rules_attribute = "*"
