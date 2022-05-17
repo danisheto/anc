@@ -9,8 +9,8 @@ use uuid::Uuid;
 pub mod cards;
 pub mod parsing;
 
-use parsing::parse_card;
-use cards::{TypeGroup, Deck};
+use parsing::BatchReader;
+use cards::Deck;
 
 pub fn run(directory: &str, path: String) {
     // TODO: accept list of files instead of a directory
@@ -21,52 +21,18 @@ pub fn run(directory: &str, path: String) {
                 .map(|e| e.to_str())
                 .flatten()
         )
-        .map(|p| p.display().to_string())
         .collect();
 
-    let card_results: Vec<_> = paths.iter()
-        .map(|p| parse_card(p))
-        .collect();
 
-    let (error_res, card_res): (Vec<_>, Vec<_>) = card_results.into_iter()
-        .zip(paths)
-        .partition(|(c, _)| c.is_err());
-
-    let errors: Vec<_> = error_res.into_iter()
-        .map(|(r, p)| (r.unwrap_err(), p))
-        .collect();
-
-    if errors.len() > 0 {
-        for (r, p) in errors {
-            eprintln!("{}: {}", p, r);
-        }
-        std::process::exit(65);
-    }
-
-    let cards: Vec<_> = card_res.into_iter()
-        .map(|(r, _)| r.unwrap())
-        .group_by(|(deck_name, _)| deck_name.to_string())
-        .into_iter()
-        .map(|(deck_name, group)| {
-            let types: Vec<_> = group
-                .into_iter()
-                .map(|(_, card)| card)
-                .group_by(|c| c.model.clone())
-                .into_iter()
-                .map(|(model, cards)| {
-                    TypeGroup {
-                        model: model.to_string(),
-                        cards: cards.into_iter().collect(),
-                    }
-                })
-                .collect();
-
-            Deck {
-                name: deck_name,
-                groups: types,
+    let cards = match BatchReader::from_files(paths).parse() {
+        Err(errors) => {
+            for (r, p) in errors {
+                eprintln!("{}: {}", p, r);
             }
-        })
-        .collect();
+            std::process::exit(65);
+        },
+        Ok(c) => c,
+    };
 
     // add/update from collection
     process_cards(&path, cards);
@@ -76,7 +42,6 @@ pub fn run(directory: &str, path: String) {
 
 // TODO:
 // - Check for duplicates
-// - tags
 fn process_cards(path: &str, decks: Vec<Deck>) {
     let mut note_ids: Vec<NoteId> = vec![];
     let mut collection = CollectionBuilder::new(path).build().unwrap();

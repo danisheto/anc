@@ -1,9 +1,92 @@
-use std::{io::{self, BufRead}, fs::File};
+use std::{io::{self, BufRead, Read}, fs::File, path::PathBuf};
 
+use itertools::Itertools;
 use html_escape::encode_text;
 use serde::Deserialize;
 
-use crate::cards::Card;
+use crate::cards::{Card, TypeGroup, Deck};
+
+pub struct BatchReader<T> where T: Read {
+    readers: Vec<(String, io::BufReader<T>)>,
+}
+
+impl<T> BatchReader<T> where T: Read {
+    pub fn parse(self) -> Result<Vec<Deck>, Vec<(String, String)>> {
+        let (cards, card_errors): (Vec<_>, Vec<_>) = self.readers.into_iter()
+            .map(|(id, p)| (id.clone(), parse_card(p, &id)))
+            .partition(|(_id, result)| result.is_ok());
+
+        let errors: Vec<_> = card_errors.into_iter()
+            .map(|(id, r)| (id, r.unwrap_err()))
+            .collect();
+
+        if errors.len() > 0 {
+            return Err(errors);
+        }
+
+        Ok(cards.into_iter()
+            .map(|(_, r)| r.unwrap())
+            .group_by(|(deck_name, _)| deck_name.to_string())
+            .into_iter()
+            .map(|(deck_name, group)| {
+                let types: Vec<_> = group
+                    .into_iter()
+                    .map(|(_, card)| card)
+                    .group_by(|c| c.model.clone())
+                    .into_iter()
+                    .map(|(model, cards)| {
+                        TypeGroup {
+                            model: model.to_string(),
+                            cards: cards.into_iter().collect(),
+                        }
+                    })
+                    .collect();
+
+                Deck {
+                    name: deck_name,
+                    groups: types,
+                }
+            })
+            .collect())
+    }
+}
+
+impl BatchReader<&[u8]> {
+    pub fn from_string(inputs: Vec<(String, &str)>) -> BatchReader<&[u8]> {
+        BatchReader {
+            readers: inputs.into_iter()
+                        .map(|(id, input)| (id, input.as_bytes()))
+                        .map(|(id, bytes)| (id, io::BufReader::new(bytes)))
+                        .collect(),
+        }
+    }
+}
+
+impl BatchReader<File> {
+    pub fn from_files(paths: Vec<PathBuf>) -> BatchReader<File> {
+        BatchReader {
+            readers: paths.into_iter()
+                        .map(|p| {
+                            let file = File::open(p.clone())
+                                .expect(format!("Could not open {:?}", p).as_str());
+                            (p.display().to_string(), io::BufReader::new(file))
+                        })
+                        .collect(),
+        }
+    }
+}
+
+pub fn parse_files(paths: Vec<PathBuf>) -> Result<Vec<Deck>, Vec<(String, String)>> {
+    BatchReader::from_files(paths)
+        .parse()
+}
+
+pub fn parse_from_file(filename: &str) -> Result<(String, Card), String> {
+    let file = File::open(filename)
+        .map_err(|_| format!("Could not open {}", filename))?;
+    let reader = io::BufReader::new(file);
+    parse_card(reader, filename)
+}
 
 #[derive(Deserialize)]
 pub struct Frontmatter {
@@ -13,10 +96,12 @@ pub struct Frontmatter {
 }
 
 // TODO: allow for more than one question per file
-pub fn parse_card(filename: &String) -> Result<(String, Card), String> {
-    let file = File::open(filename.clone())
-        .map_err(|_| format!("Could not open {}", filename))?;
-    let reader = io::BufReader::new(file);
+pub fn parse_card<T>(
+    reader: io::BufReader<T>,
+    id: &str
+) -> Result<(String, Card), String> 
+where T: Read
+{
     let mut lines = reader.lines();
 
     if let Some(Ok(l)) = lines.next() {
@@ -57,11 +142,11 @@ pub fn parse_card(filename: &String) -> Result<(String, Card), String> {
             .map(|p| plaintext(p))
             .collect();
 
-        parts.insert(0, filename.to_string());
+        parts.insert(0, id.to_string());
         parts
     };
 
-    return Ok((
+    Ok((
         frontmatter.deck,
         Card::new(
             frontmatter.r#type,
@@ -79,7 +164,7 @@ fn plaintext(text: String) -> String {
 
 #[test]
 fn basic() {
-    let result = parse_card(&"test_files/good/basic.qz".to_string());
+    let result = parse_from_file("test_files/good/basic.qz");
 
     assert!(result.is_ok(), "{}", result.unwrap_err());
 
@@ -97,13 +182,13 @@ fn basic() {
 
 #[test]
 fn nonexistent() {
-    let result = parse_card(&"test_files/nonexistent_basic".to_string());
+    let result = parse_from_file("test_files/nonexistent_basic");
 
     assert!(result.is_err(), "The nonexistent test case exists");
 }
 #[test]
 fn bad_frontmatter() {
-    let result = parse_card(&"test_files/bad_frontmatter".to_string());
+    let result = parse_from_file("test_files/bad_frontmatter");
 
     assert!(result.is_err(), "Bad frontmatter is allowed");
 }
