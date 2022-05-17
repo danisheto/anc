@@ -9,6 +9,7 @@ use crate::cards::Card;
 pub struct Frontmatter {
     deck: String,
     r#type: String,
+    tags: Option<String>,
 }
 
 // TODO: allow for more than one question per file
@@ -65,6 +66,7 @@ pub fn parse_card(filename: &String) -> Result<(String, Card), String> {
         Card::new(
             frontmatter.r#type,
             fields,
+            frontmatter.tags,
         )
     ))
 }
@@ -87,7 +89,8 @@ fn basic() {
         card,
         Card {
             model: "basic".to_string(),
-            fields: vec!["test_files/good/basic.qz".to_string(), "Question".to_string(), "Answer".to_string()]
+            fields: vec!["test_files/good/basic.qz".to_string(), "Question".to_string(), "Answer".to_string()],
+            tags: Some("example2 example3".to_string())
         }
     )
 }

@@ -21,13 +21,15 @@ pub struct TypeGroup {
 pub struct Card {
     pub model: String,
     pub fields: Vec<String>, // The first is assumed to be the id
+    pub tags: Option<String>,
 }
 
 impl Card {
-    pub fn new(model: String, fields: Vec<String>) -> Card {
+    pub fn new(model: String, fields: Vec<String>, tags: Option<String>) -> Card {
         Card {
             model,
-            fields
+            fields,
+            tags,
         }
     }
 }

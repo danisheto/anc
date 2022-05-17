@@ -1,5 +1,6 @@
 ---
 deck: example
 type: cloze
+tags: example2 example3
 ---
 Cloze {{c1::question}} w/ {{c2::multiple}} {{c3::parts}}

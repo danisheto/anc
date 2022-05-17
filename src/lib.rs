@@ -108,9 +108,9 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
                 let mut check_time = collection.storage.db.prepare("SELECT ifnull(max(id), 0) FROM notes").unwrap();
                 let mut usn_statement = collection.storage.db.prepare("select usn from col").unwrap();
                 // TODO: try named parameters instead
-                let mut insert_note = collection.storage.db.prepare("insert or replace into notes values (?, ?, ?, ?, ?, '', ?, ?, 0, 0, '')").unwrap();
+                let mut insert_note = collection.storage.db.prepare("insert or replace into notes values (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, '')").unwrap();
                 let mut update_note = collection.storage.db.prepare(
-                    "update notes set mod = ?, usn = ?, flds = ?, sfld = ?
+                    "update notes set mod = ?, usn = ?, tags = ?, flds = ?, sfld = ?
                      where id = ? and flds != ?"
                 ).unwrap();
                 let mut get_deck = collection.storage.db.prepare("select id from decks where name like ?").unwrap();
@@ -176,6 +176,7 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
                         type_id,
                         time,
                         usn,
+                        n.tags.as_ref().map(|t| format!(" {} ", t.trim())).unwrap_or(" ".to_string()),
                         fieldstr.as_str(),
                         n.fields.get(0).unwrap().as_str(),
                     ]).unwrap();
@@ -198,6 +199,7 @@ fn process_cards(path: &str, decks: Vec<Deck>) {
                         let changed_count = update_note.execute(params![
                             time,
                             usn,
+                            n.tags.as_ref().map(|t| format!(" {} ", t.trim())).unwrap_or(" ".to_string()),
                             fieldstr,
                             first_field.as_str(),
                             note_id,
