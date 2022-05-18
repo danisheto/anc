@@ -1,4 +1,4 @@
-use anc::run;
+use anc::{parsing::BatchReader, process_cards};
 use rusqlite::params;
 
 use std::{sync::Once, fs::{copy, remove_file}, panic};
@@ -76,9 +76,45 @@ macro_rules! import_test {(
     }
 }}
 
+fn run_with_strings(card_defs: Vec<(String, &str)>, path: String) {
+    let cards = match BatchReader::from_string(card_defs).parse() {
+        Err(errors) => {
+            for (r, p) in errors {
+                eprintln!("{}: {}", p, r);
+            }
+            std::process::exit(65);
+        },
+        Ok(c) => c,
+    };
+
+    // add/update from collection
+    process_cards(&path, cards);
+}
+
 #[macro_rules_attribute(import_test)]
 fn basic() {
-    run("test_files/good", "basic.anki2".to_string());
+    let card1 = "---\n\
+                deck: example\n\
+                type: basic\n\
+                tags: example2 example3\n\
+                ---\n\
+                Question\n\
+                ---\n\
+                Answer";
+    let card2 = "---\n\
+                deck: example\n\
+                type: cloze\n\
+                tags: example2 example3\n\
+                ---\n\
+                Cloze {{c1::question}} w/ {{c2::multiple}} {{c3::parts}}";
+
+    run_with_strings(
+        vec![
+            ("basic.qz".to_string(), card1),
+            ("cloze.qz".to_string(), card2)
+        ],
+        "basic.anki2".to_string()
+    );
 
     let collection = CollectionBuilder::new("basic.anki2").build().unwrap();
     let conn = collection.storage.db;
@@ -95,8 +131,31 @@ fn basic() {
 
 #[macro_rules_attribute(import_test)]
 fn one_bad() {
+    let good = "---\n\
+                deck: example\n\
+                type: basic\n\
+                ---\n\
+                Question\n\
+                ---\n\
+                Answer";
+    let bad = "---\n\
+                deck: example\n\
+                type: basic\n\
+                ---\n\
+                Bad Question\n\
+                ---\n\
+                Empty Answer\n\
+                ---\n\
+                ---";
+
     let result = panic::catch_unwind(|| {
-        run("test_files/one_bad", "one_bad.anki2".to_string());
+        run_with_strings(
+            vec![
+                ("good.qz".to_string(), good),
+                ("bad.qz".to_string(), bad),
+            ],
+            "one_bad.anki2".to_string()
+        );
     });
     assert!(result.is_err());
 

@@ -42,7 +42,7 @@ pub fn run(directory: &str, path: String) {
 
 // TODO:
 // - Check for duplicates
-fn process_cards(path: &str, decks: Vec<Deck>) {
+pub fn process_cards(path: &str, decks: Vec<Deck>) {
     let mut note_ids: Vec<NoteId> = vec![];
     let mut collection = CollectionBuilder::new(path).build().unwrap();
     {
