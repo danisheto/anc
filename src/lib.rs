@@ -131,7 +131,7 @@ pub fn process_cards(path: &str, decks: Vec<Deck>) {
                 let mut encode_buffer = Uuid::encode_buffer();
                 for n in to_add {
                     // map to field string, nothing else is used
-                    let fieldstr = build_field_str(&n.fields, field_count - n.fields.len());
+                    let fieldstr = build_field_str(&n.fields, field_count, n.fields.len());
                     let uuid: &str = Uuid::new_v4().to_simple().encode_lower(&mut encode_buffer);
                     let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos() as i64;
 
@@ -158,7 +158,7 @@ pub fn process_cards(path: &str, decks: Vec<Deck>) {
                 to_update.into_iter()
                     .for_each(|(note_id, n)| {
                         let first_field = n.fields.get(0).unwrap().clone();
-                        let fieldstr = build_field_str(&n.fields, field_count - n.fields.len());
+                        let fieldstr = build_field_str(&n.fields, field_count, n.fields.len());
                         let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos() as i64;
 
                         let changed_count = update_note.execute(params![
@@ -212,6 +212,7 @@ pub fn process_cards(path: &str, decks: Vec<Deck>) {
     }
 }
 
-fn build_field_str(fields: &Vec<String>, padding: usize) -> String {
-    fields.join("\u{1f}") + &"\u{1f}".repeat(padding)
+fn build_field_str(fields: &Vec<String>, model_field_count: usize, fields_entered_count: usize) -> String {
+    let pad = model_field_count.checked_sub(fields_entered_count).unwrap_or(0);
+    format!("{}{}", fields.join("\u{1f}"), "\u{1f}".repeat(pad))
 }
