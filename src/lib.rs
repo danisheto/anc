@@ -54,7 +54,6 @@ pub fn process_cards(path: &str, decks: Vec<Deck>) {
             let config_id: i64;
             {
                 let mut type_ids = HashMap::new();
-                // TODO: check number of required fields and fill fields with empty string
                 let mut type_query = collection.storage.db.prepare(
                     "
                         SELECT nt.id, count(*)
