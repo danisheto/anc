@@ -1,0 +1,36 @@
+#!/usr/bin/python3
+import sys
+import yaml
+from pathlib import PurePath
+
+# pass in file location and output file
+file = sys.argv[1]
+
+parts = []
+with open(file, "r") as f:
+    for line in f:
+        if line.strip() == "---":
+            parts.append("")
+        else:
+            parts[-1] += line
+parts = [ p.strip() for p in parts ]
+assert len(parts) > 1
+
+frontmatter = yaml.safe_load(parts[0])
+parent = PurePath(file).parent.name
+if "tags" in frontmatter:
+    tags = set(frontmatter["tags"].split(" "))
+    tags.add(parent)
+    frontmatter["tags"] = " ".join(sorted(tags)).strip()
+else:
+    frontmatter["tags"] = parent
+
+print("""---
+{yaml}
+---
+{fields}"""
+    .format(
+        yaml=yaml.dump(frontmatter, default_flow_style=False).strip(),
+        fields="\n---\n".join(parts[1:])
+    )
+)

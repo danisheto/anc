@@ -11,7 +11,7 @@ use uuid::Uuid;
 pub mod cards;
 pub mod parsing;
 
-use parsing::BatchReader;
+use parsing::parse_files;
 use cards::Deck;
 
 pub fn init() -> Result<(), ()> {
@@ -86,11 +86,7 @@ fn find_config(mut path: PathBuf) -> Option<PathBuf> {
 pub fn run() {
     let config = get_config().unwrap();
     // TODO: accept list of files instead of a directory
-    let base_dir = {
-        let mut c = config.config_dir;
-        c.pop();
-        c
-    };
+    let base_dir = config.config_dir.parent().unwrap().to_path_buf();
     let paths: Vec<_> = fs::read_dir(base_dir).unwrap().into_iter()
         .map(|p| p.unwrap().path().canonicalize().unwrap())
         .filter(|p| p.is_file() && 
@@ -101,7 +97,7 @@ pub fn run() {
         .collect();
 
 
-    let cards = match BatchReader::from_files(paths).parse() {
+    let cards = match parse_files(config.config_dir, paths) {
         Err(errors) => {
             for (r, p) in errors {
                 eprintln!("{}: {}", p, r);

@@ -1,4 +1,4 @@
-use std::{io::{self, BufRead, Read}, fs::File, path::PathBuf};
+use std::{io::{self, BufRead, Read}, fs::File, path::PathBuf, process::{Command, Stdio, ChildStdout}};
 
 use itertools::Itertools;
 use html_escape::encode_text;
@@ -52,10 +52,9 @@ impl<T> BatchReader<T> where T: Read {
 }
 
 impl BatchReader<&[u8]> {
-    pub fn from_string(inputs: Vec<(String, &str)>) -> BatchReader<&[u8]> {
+    pub fn from_stdout(inputs: Vec<(String, ChildStdout)>) -> BatchReader<ChildStdout> {
         BatchReader {
             readers: inputs.into_iter()
-                        .map(|(id, input)| (id, input.as_bytes()))
                         .map(|(id, bytes)| (id, io::BufReader::new(bytes)))
                         .collect(),
         }
@@ -76,9 +75,30 @@ impl BatchReader<File> {
     }
 }
 
-pub fn parse_files(paths: Vec<PathBuf>) -> Result<Vec<Deck>, Vec<(String, String)>> {
-    BatchReader::from_files(paths)
-        .parse()
+pub fn parse_files(config_dir: PathBuf, paths: Vec<PathBuf>) -> Result<Vec<Deck>, Vec<(String, String)>> {
+    let path = config_dir.join("hooks/pre-parse");
+    if path.exists() {
+        BatchReader::from_stdout(
+            paths.into_iter()
+                    .map(|p| {
+                        let command = Command::new(path.display().to_string())
+                            .arg(p.display().to_string())
+                            .stdout(Stdio::piped())
+                            .spawn()
+                            .unwrap()
+                            .stdout
+                            .take()
+                            .unwrap();
+                        (
+                            p.display().to_string(),
+                            command
+                        )
+                    }).collect()
+        ).parse()
+    } else {
+        BatchReader::from_files(paths)
+            .parse()
+    }
 }
 
 pub fn parse_from_file(filename: &str) -> Result<(String, Card), String> {
