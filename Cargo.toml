@@ -7,6 +7,7 @@ edition = "2021"
 serde = { version = "*", features = ["derive"]}
 serde_yaml = "*"
 serde_json = "*"
+toml = "*"
 itertools = "*"
 rusqlite = "*"
 sha1 = "*"
@@ -15,6 +16,7 @@ anki = { path = "anki/rslib" }
 html-escape = "*"
 prost = "*"
 clap = { version = "*", features = ["derive"]}
+tfio = "*"
 
 [dev-dependencies]
 macro_rules_attribute = "*"

@@ -57,6 +57,8 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha1",
+ "tfio",
+ "toml",
  "uuid",
 ]
 
@@ -2293,6 +2295,15 @@ name = "textwrap"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1141d4d61095b28419e22cb0bbf02755f5e54e0526f97f1e3d1d160e60885fb"
+
+[[package]]
+name = "tfio"
+version = "0.1.32"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08b98fcc01ce31e3d56ccd4ba49dfdc529619d7b7b8a657f7d6f603a3843fbac"
+dependencies = [
+ "uuid",
+]
 
 [[package]]
 name = "thiserror"

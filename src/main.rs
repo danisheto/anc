@@ -1,8 +1,8 @@
-use std::env;
+use std::process::exit;
 
 use clap::{Parser, Subcommand};
 
-use anc::run;
+use anc::{run, init};
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -16,15 +16,20 @@ struct Cli {
 enum Commands {
     /// Update Anki with files in current Anc directory
     Save { },
+    Init { },
 }
 
 fn main() {
     let cli = Cli::parse();
 
-    let path = env::var("TEST_ANKI").expect("For testing, need a $TEST_ANKI");
     match &cli.command {
         Commands::Save { } => {
-            run(".", path);
+            run();
+        },
+        Commands::Init { } => {
+            if let Err(_) = init() {
+                exit(5);
+            }
         },
     }
 }

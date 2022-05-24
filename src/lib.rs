@@ -1,9 +1,11 @@
-use std::{fs, collections::HashMap, time::SystemTime};
+use std::{fs, collections::HashMap, time::SystemTime, path::{PathBuf, Path}, env};
 
 use anki::{notes::NoteId, collection::CollectionBuilder, timestamp::TimestampSecs, decks::{DeckKindContainer, DeckKind, DeckId}, prelude::DeckConfigId, deckconfig::NewCardInsertOrder};
 use itertools::{Either, Itertools};
 use prost::Message;
 use rusqlite::params;
+use serde::Deserialize;
+use tfio::{Transaction, RollbackableOperation};
 use uuid::Uuid;
 
 pub mod cards;
@@ -12,9 +14,84 @@ pub mod parsing;
 use parsing::BatchReader;
 use cards::Deck;
 
-pub fn run(directory: &str, path: String) {
+pub fn init() -> Result<(), ()> {
+    let mut tran = Transaction::new()
+        .create_dir("./.anc")
+        .create_dir("./.anc/hooks")
+        .create_file("./.anc/config")
+        .write_file("./.anc/config", "/tmp", b"# anki_dir = \"~/.local/share/Anki2/User 1\"\n".to_vec());
+    match tran.execute() {
+        Err(e) => {
+            eprintln!("{}", e);
+            eprintln!("Error creating .anc directory");
+            if let Err(_) = tran.rollback() {
+                eprintln!("Error undoing failure");
+            }
+            Err(())
+        },
+        Ok(_) => {
+            Ok(())
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct Config {
+    anki_dir: Option<PathBuf>,
+}
+
+struct AllConfiguration {
+    config_dir: PathBuf,
+    anki_dir: PathBuf,
+}
+
+fn get_config() -> Result<AllConfiguration, &'static str> {
+    let config_dir = search_for_config();
+    if config_dir.is_none() {
+        return Err("Not an anc directory. Initialize first.");
+    }
+
+    let anki_dir = fs::read_to_string(config_dir.as_ref().unwrap().join("config"))
+        .map_or(None, |c| {
+            let config: Config = toml::from_str(&c).unwrap();
+            config.anki_dir
+        })
+        .or({
+            env::var("ANKI_DIR") 
+                .map_or(None, |ad| Some(PathBuf::from(ad)))
+        })
+        .expect("Set anki_dir in .anc/config or set $ANKI_DIR");
+
+    Ok(AllConfiguration {
+        config_dir: config_dir.unwrap(),
+        anki_dir,
+    })
+}
+
+fn search_for_config() -> Option<PathBuf> {
+    find_config(Path::new(".").to_path_buf().canonicalize().unwrap())
+}
+
+fn find_config(mut path: PathBuf) -> Option<PathBuf> {
+    let target = path.join(".anc");
+    if target.is_dir() {
+        Some(target)
+    } else if path.pop() {
+        find_config(path)
+    } else {
+        None
+    }
+}
+
+pub fn run() {
+    let config = get_config().unwrap();
     // TODO: accept list of files instead of a directory
-    let paths: Vec<_> = fs::read_dir(directory).unwrap().into_iter()
+    let base_dir = {
+        let mut c = config.config_dir;
+        c.pop();
+        c
+    };
+    let paths: Vec<_> = fs::read_dir(base_dir).unwrap().into_iter()
         .map(|p| p.unwrap().path().canonicalize().unwrap())
         .filter(|p| p.is_file() && 
             Some("qz") == p.extension()
@@ -35,14 +112,14 @@ pub fn run(directory: &str, path: String) {
     };
 
     // add/update from collection
-    process_cards(&path, cards);
+    process_cards(config.anki_dir.join("collection.anki2"), cards);
 
     // TODO: log
 }
 
 // TODO:
 // - Check for duplicates
-pub fn process_cards(path: &str, decks: Vec<Deck>) {
+pub fn process_cards(path: PathBuf, decks: Vec<Deck>) {
     let mut note_ids: Vec<NoteId> = vec![];
     let mut collection = CollectionBuilder::new(path).build().unwrap();
     {
