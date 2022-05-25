@@ -1,7 +1,7 @@
 use anc::{parsing::BatchReader, process_cards};
 use rusqlite::params;
 
-use std::{sync::Once, fs::{copy, remove_file}, panic};
+use std::{sync::Once, fs::{copy, remove_file}, panic, path::PathBuf};
 
 use anki::{collection::CollectionBuilder, decks::NativeDeckName, notetype::{NoteField, NoteFieldConfig}};
 
@@ -88,7 +88,7 @@ fn run_with_strings(card_defs: Vec<(String, &str)>, path: String) {
     };
 
     // add/update from collection
-    process_cards(&path, cards);
+    process_cards(PathBuf::from(path), cards);
 }
 
 #[macro_rules_attribute(import_test)]

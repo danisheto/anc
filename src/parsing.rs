@@ -52,6 +52,17 @@ impl<T> BatchReader<T> where T: Read {
 }
 
 impl BatchReader<&[u8]> {
+    pub fn from_string(inputs: Vec<(String, &str)>) -> BatchReader<&[u8]> {
+        BatchReader {
+            readers: inputs.into_iter()
+                        .map(|(id, card)| (id, card.as_bytes()))
+                        .map(|(id, bytes)| (id, io::BufReader::new(bytes)))
+                        .collect(),
+        }
+    }
+}
+
+impl BatchReader<ChildStdout> {
     pub fn from_stdout(inputs: Vec<(String, ChildStdout)>) -> BatchReader<ChildStdout> {
         BatchReader {
             readers: inputs.into_iter()
