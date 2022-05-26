@@ -85,17 +85,8 @@ fn find_config(mut path: PathBuf) -> Option<PathBuf> {
 
 pub fn run() {
     let config = get_config().unwrap();
-    // TODO: accept list of files instead of a directory
-    let base_dir = config.config_dir.parent().unwrap().to_path_buf();
-    let paths: Vec<_> = fs::read_dir(base_dir).unwrap().into_iter()
-        .map(|p| p.unwrap().path().canonicalize().unwrap())
-        .filter(|p| p.is_file() && 
-            Some("qz") == p.extension()
-                .map(|e| e.to_str())
-                .flatten()
-        )
-        .collect();
 
+    let paths = find_files(&config.config_dir, "qz");
 
     let cards = match parse_files(config.config_dir, paths) {
         Err(errors) => {
@@ -111,6 +102,25 @@ pub fn run() {
     process_cards(config.anki_dir.join("collection.anki2"), cards);
 
     // TODO: log
+}
+fn find_files(config_dir: &PathBuf, extension: &str) -> Vec<PathBuf> {
+    let base_dir = config_dir.parent().unwrap().to_path_buf();
+    let mut to_check = vec![base_dir];
+    let mut paths = vec![];
+    // TODO: use .gitignore
+    while let Some(dir) = to_check.pop() {
+        for pr in fs::read_dir(dir).unwrap().into_iter() {
+            if let Ok(p) = pr {
+                let canon = p.path().canonicalize().unwrap();
+                if canon.is_dir() && canon.file_name().map(|e| e.to_str()).flatten() != Some(".anc") {
+                    to_check.push(p.path());
+                } else if canon.is_file() && canon.extension().map(|e| e.to_str()).flatten() == Some(extension) {
+                    paths.push(canon);
+                }
+            }
+        }
+    }
+    paths
 }
 
 // TODO:
