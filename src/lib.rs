@@ -158,7 +158,7 @@ pub fn process_cards(path: PathBuf, decks: Vec<Deck>) {
                 let mut insert_note = collection.storage.db.prepare("insert or replace into notes values (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, '')").unwrap();
                 let mut update_note = collection.storage.db.prepare(
                     "update notes set mod = ?, usn = ?, tags = ?, flds = ?, sfld = ?
-                     where id = ? and flds != ?"
+                     where id = ?"
                 ).unwrap();
                 let mut get_deck = collection.storage.db.prepare("select id from decks where name like ?").unwrap();
                 let mut get_deck_kind = collection.storage.db.prepare("select kind from decks where id = ?").unwrap();
@@ -250,7 +250,6 @@ pub fn process_cards(path: PathBuf, decks: Vec<Deck>) {
                             fieldstr,
                             first_field.as_str(),
                             note_id,
-                            fieldstr,
                         ]).unwrap();
                         
                         // has to be either 0 or one
