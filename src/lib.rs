@@ -110,6 +110,7 @@ pub fn run() {
         .max()
         .map(|m| m.to_string().len());
     let output = logs.into_iter()
+        .filter(|(_, added, updated)| *added != 0 || *updated != 0)
         .map(|(name, added, updated)| format!(
                 "{added:apad$} added and {updated:upad$} updated to {name}",
                 added=added,
@@ -169,9 +170,9 @@ pub fn process_cards(path: PathBuf, decks: Vec<Deck>) -> Vec<(String, i32, i32)>
                         WHERE nt.name like ?
                     ").unwrap();
 
-                let mut nid_by_first_field = collection.storage.db.prepare(
+                let mut existing_note = collection.storage.db.prepare(
                     "
-                        SELECT id
+                        SELECT id, flds, tags
                         FROM notes
                         WHERE SUBSTR(flds, 0, INSTR(flds, char(31))) like ?
                         limit 1
@@ -208,9 +209,16 @@ pub fn process_cards(path: PathBuf, decks: Vec<Deck>) -> Vec<(String, i32, i32)>
                 let (to_add, to_update): (Vec<_>, Vec<_>) = g.cards
                     .iter()
                     .partition_map(|card| {
-                        if let Ok(Some(row)) = nid_by_first_field.query(params![card.fields.get(0).unwrap()]).unwrap().next() {
+                        if let Ok(Some(row)) = existing_note.query(params![card.fields.get(0).unwrap()]).unwrap().next() {
                             let note_id: i64 = row.get(0).unwrap();
-                            Either::Right((note_id, card))
+                            let flds: String = row.get(1).unwrap();
+                            let tags: String = row.get(2).unwrap();
+                            Either::Right((
+                                note_id,
+                                flds,
+                                tags,
+                                card
+                            ))
                         } else {
                             Either::Left(card)
                         }
@@ -262,27 +270,30 @@ pub fn process_cards(path: PathBuf, decks: Vec<Deck>) -> Vec<(String, i32, i32)>
                 }
 
                 // add updates
-                to_update.into_iter()
-                    .for_each(|(note_id, n)| {
-                        let first_field = n.fields.get(0).unwrap().clone();
-                        let fieldstr = build_field_str(&n.fields, field_count, n.fields.len());
-                        let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos() as i64;
+                for (note_id, existing_flds, existing_tags, n) in to_update {
+                    let fieldstr = build_field_str(&n.fields, field_count, n.fields.len());
+                    let tags = n.tags.as_ref().map(|t| format!(" {} ", t.trim())).unwrap_or(" ".to_string());
 
-                        let changed_count = update_note.execute(params![
-                            time,
-                            usn,
-                            n.tags.as_ref().map(|t| format!(" {} ", t.trim())).unwrap_or(" ".to_string()),
-                            fieldstr,
-                            first_field.as_str(),
-                            note_id,
-                        ]).unwrap();
-                        
-                        // has to be either 0 or one
-                        if changed_count > 0 {
-                            note_ids.push(NoteId::from(note_id));
-                            total_updated += 1;
-                        }
-                    });
+                    if fieldstr == existing_flds && tags == existing_tags { break }
+
+                    let first_field = n.fields.get(0).unwrap().clone();
+                    let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos() as i64;
+
+                    let changed_count = update_note.execute(params![
+                        time,
+                        usn,
+                        tags,
+                        fieldstr,
+                        first_field.as_str(),
+                        note_id,
+                    ]).unwrap();
+                    
+                    // has to be either 0 or one
+                    if changed_count > 0 {
+                        note_ids.push(NoteId::from(note_id));
+                        total_updated += 1;
+                    }
+                }
                 // these config values are used by after_note_updates
                 deck_id = get_deck.query(params![d.name]).unwrap().next()
                     .expect(&format!("Deck {} does not exist", d.name))
