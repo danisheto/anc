@@ -99,10 +99,32 @@ pub fn run() {
     };
 
     // add/update from collection
-    process_cards(config.anki_dir.join("collection.anki2"), cards);
+    let logs = process_cards(config.anki_dir.join("collection.anki2"), cards);
 
-    // TODO: log
+    let added_length = logs.iter()
+        .map(|(_, added, _)| added)
+        .max()
+        .map(|m| m.to_string().len());
+    let updated_length = logs.iter()
+        .map(|(_, _, updated)| updated)
+        .max()
+        .map(|m| m.to_string().len());
+    let output = logs.into_iter()
+        .map(|(name, added, updated)| format!(
+                "{added:apad$} added and {updated:upad$} updated to {name}",
+                added=added,
+                updated=updated,
+                apad=added_length.unwrap(),
+                upad=updated_length.unwrap()
+        ))
+        .reduce(|mut total, next| {
+            total.push_str(&next);
+            total
+        })
+        .unwrap_or_else(|| "Nothing was added or updated".to_string());
+    eprintln!("{}", output);
 }
+
 fn find_files(config_dir: &PathBuf, extension: &str) -> Vec<PathBuf> {
     let base_dir = config_dir.parent().unwrap().to_path_buf();
     let mut to_check = vec![base_dir];
@@ -125,13 +147,15 @@ fn find_files(config_dir: &PathBuf, extension: &str) -> Vec<PathBuf> {
 
 // TODO:
 // - Check for duplicates
-pub fn process_cards(path: PathBuf, decks: Vec<Deck>) {
+pub fn process_cards(path: PathBuf, decks: Vec<Deck>) -> Vec<(String, i32, i32)> {
     let mut note_ids: Vec<NoteId> = vec![];
+    let mut deck_logs: Vec<(String, i32, i32)> = Vec::with_capacity(decks.len());
     let mut collection = CollectionBuilder::new(path).build().unwrap();
     {
         collection.storage.db.prepare("savepoint anc").unwrap().execute([]).unwrap();
     }
     for d in decks {
+        let (mut total_added, mut total_updated) = (0, 0);
         for g in d.groups {
             let deck_id: i64;
             let config_id: i64;
@@ -231,6 +255,7 @@ pub fn process_cards(path: PathBuf, decks: Vec<Deck>) {
                     // has to be either 0 or one
                     if added_count > 0 {
                         note_ids.push(NoteId::from(next_note_id));
+                        total_added += 1;
                     }
 
                     next_note_id += 1;
@@ -255,6 +280,7 @@ pub fn process_cards(path: PathBuf, decks: Vec<Deck>) {
                         // has to be either 0 or one
                         if changed_count > 0 {
                             note_ids.push(NoteId::from(note_id));
+                            total_updated += 1;
                         }
                     });
                 // these config values are used by after_note_updates
@@ -287,10 +313,12 @@ pub fn process_cards(path: PathBuf, decks: Vec<Deck>) {
                 collection.sort_deck_legacy(DeckId::from(deck_id), true).unwrap();
             }
         }
+        deck_logs.push((d.name, total_added, total_updated));
     }
     {
         collection.storage.db.prepare("release anc").unwrap().execute([]).unwrap(); // commit
     }
+    deck_logs
 }
 
 fn build_field_str(fields: &Vec<String>, model_field_count: usize, fields_entered_count: usize) -> String {
