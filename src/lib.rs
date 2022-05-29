@@ -100,30 +100,42 @@ pub fn run() {
 
     // add/update from collection
     let logs = process_cards(config.anki_dir.join("collection.anki2"), cards);
+    match logs {
+        Err(e) => {
+            let error_log = e.into_iter()
+                .reduce(|mut output, err| {
+                output += &err;
+                output
+            }).unwrap();
+            eprintln!("{}", error_log);
+        },
+        Ok(successes) => {
+            let added_length = successes.iter()
+                .map(|(_, added, _)| added)
+                .max()
+                .map(|m| m.to_string().len());
+            let updated_length = successes.iter()
+                .map(|(_, _, updated)| updated)
+                .max()
+                .map(|m| m.to_string().len());
+            let output = successes.into_iter()
+                .filter(|(_, added, updated)| *added != 0 || *updated != 0)
+                .map(|(name, added, updated)| format!(
+                        "{added:apad$} added and {updated:upad$} updated to {name}",
+                        added=added,
+                        updated=updated,
+                        apad=added_length.unwrap(),
+                        upad=updated_length.unwrap()
+                ))
+                .reduce(|mut total, next| {
+                    total.push_str(&next);
+                    total
+                })
+                .unwrap_or_else(|| "Nothing was added or updated".to_string());
+            eprintln!("{}", output);
+        }
+    }
 
-    let added_length = logs.iter()
-        .map(|(_, added, _)| added)
-        .max()
-        .map(|m| m.to_string().len());
-    let updated_length = logs.iter()
-        .map(|(_, _, updated)| updated)
-        .max()
-        .map(|m| m.to_string().len());
-    let output = logs.into_iter()
-        .filter(|(_, added, updated)| *added != 0 || *updated != 0)
-        .map(|(name, added, updated)| format!(
-                "{added:apad$} added and {updated:upad$} updated to {name}",
-                added=added,
-                updated=updated,
-                apad=added_length.unwrap(),
-                upad=updated_length.unwrap()
-        ))
-        .reduce(|mut total, next| {
-            total.push_str(&next);
-            total
-        })
-        .unwrap_or_else(|| "Nothing was added or updated".to_string());
-    eprintln!("{}", output);
 }
 
 fn find_files(config_dir: &PathBuf, extension: &str) -> Vec<PathBuf> {
@@ -148,15 +160,16 @@ fn find_files(config_dir: &PathBuf, extension: &str) -> Vec<PathBuf> {
 
 // TODO:
 // - Check for duplicates
-pub fn process_cards(path: PathBuf, decks: Vec<Deck>) -> Vec<(String, i32, i32)> {
+pub fn process_cards(path: PathBuf, decks: Vec<Deck>) -> Result<Vec<(String, i32, i32)>, Vec<String>> {
     let mut note_ids: Vec<NoteId> = vec![];
-    let mut deck_logs: Vec<(String, i32, i32)> = Vec::with_capacity(decks.len());
+    let mut deck_logs: Vec<Result<(String, i32, i32), String>> = Vec::with_capacity(decks.len());
     let mut collection = CollectionBuilder::new(path).build().unwrap();
     {
         collection.storage.db.prepare("savepoint anc").unwrap().execute([]).unwrap();
     }
     for d in decks {
         let (mut total_added, mut total_updated) = (0, 0);
+        let mut errors = vec![];
         for g in d.groups {
             let deck_id: i64;
             let config_id: i64;
@@ -318,18 +331,41 @@ pub fn process_cards(path: PathBuf, decks: Vec<Deck>) -> Vec<(String, i32, i32)>
                 }.unwrap();
             }
             // create cards
-            collection.after_note_updates(&*note_ids, true, false).unwrap();
-            let config = collection.get_deck_config(DeckConfigId::from(config_id), true).unwrap().unwrap();
-            if config.inner.new_card_insert_order == NewCardInsertOrder::Random as i32 {
-                collection.sort_deck_legacy(DeckId::from(deck_id), true).unwrap();
+            let result = collection.after_note_updates(&*note_ids, true, false);
+            if result.is_err() {
+                errors.push(result.unwrap_err());
+            } else {
+                let config = collection.get_deck_config(DeckConfigId::from(config_id), true).unwrap().unwrap();
+                if config.inner.new_card_insert_order == NewCardInsertOrder::Random as i32 {
+                    collection.sort_deck_legacy(DeckId::from(deck_id), true).unwrap();
+                }
             }
         }
-        deck_logs.push((d.name, total_added, total_updated));
+        // TODO: clean this up
+        if errors.is_empty() {
+            deck_logs.push(Ok((d.name, total_added, total_updated)));
+        } else {
+            deck_logs.push(Err(
+                errors.into_iter()
+                    .map(|e| e.localized_description(&collection.tr))
+                    .reduce(|mut output, e| {
+                        output += &e;
+                        output
+                    }).unwrap()
+            ));
+        }
     }
-    {
+    if deck_logs.iter().all(|l| l.is_ok()) {
         collection.storage.db.prepare("release anc").unwrap().execute([]).unwrap(); // commit
+        Ok(deck_logs.into_iter()
+            .map(|l| l.unwrap())
+            .collect())
+    } else {
+        Err(deck_logs.into_iter()
+            .filter(|l| l.is_err())
+            .map(|l| l.unwrap_err())
+            .collect())
     }
-    deck_logs
 }
 
 fn build_field_str(fields: &Vec<String>, model_field_count: usize, fields_entered_count: usize) -> String {
