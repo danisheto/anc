@@ -124,6 +124,7 @@ pub struct Frontmatter {
     deck: String,
     r#type: String,
     tags: Option<String>,
+    html: Option<bool>,
 }
 
 // TODO: allow for more than one question per file
@@ -169,9 +170,15 @@ where T: Read
             *last += "\n";
         }
 
-        parts = parts.into_iter()
-            .map(|p| plaintext(p))
-            .collect();
+        if !frontmatter.html.unwrap_or(false) {
+            parts = parts.into_iter()
+                .map(|p| plaintext(p))
+                .collect();
+        } else {
+            parts = parts.into_iter()
+                .map(|p| p.trim().to_string())
+                .collect();
+        }
 
         parts.insert(0, id.to_string());
         parts
