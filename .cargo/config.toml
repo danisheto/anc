@@ -1,0 +1,6 @@
+[env]
+BAZEL = "not empty" # this will let us use BUILDINFO below
+BUILDINFO={ value="config.txt", relative=true }
+SYNC_ENDPOINT="http://10.0.0.5:8080/sync/"
+# steal this instead
+# https://gitlab.kitware.com/utils/ghostflow-director/blob/master/build.rs

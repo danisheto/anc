@@ -17,6 +17,11 @@ html-escape = "*"
 prost = "*"
 clap = { version = "*", features = ["derive"]}
 tfio = "*"
+serde-pickle = "*"
+tokio = "*"
 
 [dev-dependencies]
 macro_rules_attribute = "*"
+
+[build-dependencies]
+prost-build = "*"

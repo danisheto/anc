@@ -8,8 +8,10 @@ use serde::Deserialize;
 use tfio::{Transaction, RollbackableOperation};
 use uuid::Uuid;
 
+pub mod pb;
 pub mod cards;
 pub mod parsing;
+pub mod sync;
 
 use parsing::parse_files;
 use cards::Deck;
@@ -40,12 +42,12 @@ struct Config {
     anki_dir: Option<PathBuf>,
 }
 
-struct AllConfiguration {
+pub struct AllConfiguration {
     config_dir: PathBuf,
-    anki_dir: PathBuf,
+    pub anki_dir: PathBuf,
 }
 
-fn get_config() -> Result<AllConfiguration, &'static str> {
+pub fn get_config() -> Result<AllConfiguration, &'static str> {
     let config_dir = search_for_config();
     if config_dir.is_none() {
         return Err("Not an anc directory. Initialize first.");
@@ -135,7 +137,6 @@ pub fn run() {
             eprintln!("{}", output);
         }
     }
-
 }
 
 fn find_files(config_dir: &PathBuf, extension: &str) -> Vec<PathBuf> {
@@ -191,7 +192,6 @@ pub fn process_cards(path: PathBuf, decks: Vec<Deck>) -> Result<Vec<(String, i32
                         limit 1
                     ").unwrap();
                 let mut check_time = collection.storage.db.prepare("SELECT ifnull(max(id), 0) FROM notes").unwrap();
-                let mut usn_statement = collection.storage.db.prepare("select usn from col").unwrap();
                 // TODO: try named parameters instead
                 let mut insert_note = collection.storage.db.prepare("insert or replace into notes values (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, '')").unwrap();
                 let mut update_note = collection.storage.db.prepare(
@@ -248,12 +248,7 @@ pub fn process_cards(path: PathBuf, decks: Vec<Deck>) -> Result<Vec<(String, i32
                 } else {
                     current
                 };
-                // grab usn - no idea what this is
-                let usn: i64 = if let Some(row) = usn_statement.query([]).unwrap().next().unwrap() {
-                    row.get(0).unwrap()
-                } else {
-                    panic!("col table missing");
-                };
+                let usn: i64 = -1; // not a server
                 // add new
                 let mut encode_buffer = Uuid::encode_buffer();
                 for n in to_add {
