@@ -92,8 +92,8 @@ pub fn run() {
 
     let cards = match parse_files(config.config_dir, paths) {
         Err(errors) => {
-            for (r, p) in errors {
-                eprintln!("{}: {}", p, r);
+            for p in errors {
+                eprintln!("{}", p);
             }
             std::process::exit(65);
         },

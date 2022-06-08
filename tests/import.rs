@@ -79,8 +79,8 @@ macro_rules! import_test {(
 fn run_with_strings(card_defs: Vec<(String, &str)>, path: String) {
     let cards = match BatchReader::from_string(card_defs).parse() {
         Err(errors) => {
-            for (r, p) in errors {
-                eprintln!("{}: {}", p, r);
+            for p in errors {
+                eprintln!("{}", p);
             }
             std::process::exit(65);
         },
@@ -88,7 +88,7 @@ fn run_with_strings(card_defs: Vec<(String, &str)>, path: String) {
     };
 
     // add/update from collection
-    process_cards(PathBuf::from(path), cards);
+    process_cards(PathBuf::from(path), cards).unwrap();
 }
 
 #[macro_rules_attribute(import_test)]
