@@ -89,6 +89,7 @@ pub fn parse_files(config_dir: PathBuf, paths: Vec<PathBuf>) -> Result<Vec<Deck>
     let path = config_dir.join("hooks/pre-parse");
     if path.exists() {
         let mut process = Command::new(path.display().to_string())
+            .current_dir(config_dir.join("hooks"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
