@@ -24,19 +24,51 @@ enum Commands {
 fn main() {
     let cli = Cli::parse();
 
-    match &cli.command {
+    let output = match &cli.command {
         Commands::Save { } => {
-            run();
+            run()
+                .map(|successes| {
+                    let added_length = successes.iter()
+                        .map(|(_, added, _)| added)
+                        .max()
+                        .map(|m| m.to_string().len());
+                    let updated_length = successes.iter()
+                        .map(|(_, _, updated)| updated)
+                        .max()
+                        .map(|m| m.to_string().len());
+                    let output: Vec<String> = successes.into_iter()
+                        .filter(|(_, added, updated)| *added != 0 || *updated != 0)
+                        .map(|(name, added, updated)| format!(
+                                "{added:apad$} added and {updated:upad$} updated to {name}",
+                                added=added,
+                                updated=updated,
+                                apad=added_length.unwrap(),
+                                upad=updated_length.unwrap()
+                        ))
+                        .collect();
+                    if output.is_empty() {
+                        vec!["Nothing was added or updated".to_string()]
+                    } else {
+                        output
+                    }
+                })
         },
         Commands::Sync { } => {
             let result = sync();
             let runtime = Runtime::new().unwrap();
-            runtime.block_on(result);
+            runtime.block_on(result)
         }
         Commands::Init { } => {
-            if let Err(_) = init() {
-                exit(5);
-            }
+            init()
         },
+    };
+    match output {
+        Err(e) => {
+            eprintln!("{}", e.concat());
+            exit(1);
+        },
+        Ok(successes) => {
+            eprintln!("{}", successes.concat());
+        }
     }
 }

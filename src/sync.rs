@@ -6,8 +6,8 @@ use serde_pickle::{Deserializer, DeOptions, Value, HashableValue};
 
 use crate::get_config;
 
-pub async fn sync() {
-    let config = get_config().unwrap();
+pub async fn sync() -> Result<Vec<String>, Vec<String>> {
+    let config = get_config().map_err(|e| vec![e.to_string()])?;
     let auth = get_auth(&config.anki_dir)
         .map(|(hkey, host_number)| {
             SyncAuth {
@@ -16,7 +16,9 @@ pub async fn sync() {
             }
         }).unwrap();
     let mut collection = CollectionBuilder::new(config.anki_dir.join("collection.anki2")).build().unwrap();
-    collection.normal_sync(auth, |_progress, _done| { }).await.unwrap();
+    collection.normal_sync(auth, |_progress, _done| { }).await
+        .map_err(|e| vec![e.to_string()])
+        .map(|o| vec![o.server_message])
 }
 
 pub fn get_auth(path: &PathBuf) -> Option<(String, Option<i64>)> {

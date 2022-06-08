@@ -16,7 +16,10 @@ pub mod sync;
 use parsing::parse_files;
 use cards::Deck;
 
-pub fn init() -> Result<(), ()> {
+pub fn init() -> Result<Vec<String>, Vec<String>> {
+    let to_create = env::current_dir()
+        .map_err(|e| vec![e.to_string()])?
+        .join(".anc");
     let mut tran = Transaction::new()
         .create_dir("./.anc")
         .create_dir("./.anc/hooks")
@@ -24,15 +27,14 @@ pub fn init() -> Result<(), ()> {
         .write_file("./.anc/config", "/tmp", b"# anki_dir = \"~/.local/share/Anki2/User 1\"\n".to_vec());
     match tran.execute() {
         Err(e) => {
-            eprintln!("{}", e);
-            eprintln!("Error creating .anc directory");
+            let mut errors = vec![e.to_string(), "Error creating .anc directory".to_string()];
             if let Err(_) = tran.rollback() {
-                eprintln!("Error undoing failure");
+                errors.push("Error undoing failure".to_string());
             }
-            Err(())
+            Err(errors)
         },
         Ok(_) => {
-            Ok(())
+            Ok(vec![format!("Initialized empty anc configuration in {}", to_create.to_string_lossy())])
         }
     }
 }
@@ -85,8 +87,8 @@ fn find_config(mut path: PathBuf) -> Option<PathBuf> {
     }
 }
 
-pub fn run() {
-    let config = get_config().unwrap();
+pub fn run() -> Result<Vec<(String, i32, i32)>, Vec<String>> {
+    let config = get_config().map_err(|e| vec![e.to_string()])?;
 
     let paths = find_files(&config.config_dir, "qz");
 
@@ -101,42 +103,7 @@ pub fn run() {
     };
 
     // add/update from collection
-    let logs = process_cards(config.anki_dir.join("collection.anki2"), cards);
-    match logs {
-        Err(e) => {
-            let error_log = e.into_iter()
-                .reduce(|mut output, err| {
-                output += &err;
-                output
-            }).unwrap();
-            eprintln!("{}", error_log);
-        },
-        Ok(successes) => {
-            let added_length = successes.iter()
-                .map(|(_, added, _)| added)
-                .max()
-                .map(|m| m.to_string().len());
-            let updated_length = successes.iter()
-                .map(|(_, _, updated)| updated)
-                .max()
-                .map(|m| m.to_string().len());
-            let output = successes.into_iter()
-                .filter(|(_, added, updated)| *added != 0 || *updated != 0)
-                .map(|(name, added, updated)| format!(
-                        "{added:apad$} added and {updated:upad$} updated to {name}",
-                        added=added,
-                        updated=updated,
-                        apad=added_length.unwrap(),
-                        upad=updated_length.unwrap()
-                ))
-                .reduce(|mut total, next| {
-                    total.push_str(&next);
-                    total
-                })
-                .unwrap_or_else(|| "Nothing was added or updated".to_string());
-            eprintln!("{}", output);
-        }
-    }
+    process_cards(config.anki_dir.join("collection.anki2"), cards)
 }
 
 fn find_files(config_dir: &PathBuf, extension: &str) -> Vec<PathBuf> {
